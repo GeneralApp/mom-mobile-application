@@ -20,7 +20,7 @@ export function AttachmentsList({
 
     setUploading(true);
     try {
-      // 1. Upload to Supabase Storage 'meeting-files' bucket
+      // 1. Upload to the 'meeting-files' bucket
       const uploaded = await uploadToStorage({
         file,
         bucket: 'meeting-files',

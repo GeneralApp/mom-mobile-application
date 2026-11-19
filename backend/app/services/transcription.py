@@ -6,7 +6,7 @@ from tempfile import NamedTemporaryFile
 import imageio_ffmpeg
 
 from google import genai
-from supabase import Client
+from app.db import Client
 
 from app.core.config import get_settings
 
@@ -24,12 +24,12 @@ VIDEO_EXTENSIONS = {
 
 
 async def transcribe_audio(
-    supabase: Client,
+    db: Client,
     bucket: str,
     path: str,
 ) -> str:
     """
-    Download an audio/video recording from Supabase,
+    Download an audio/video recording from MongoDB file storage,
     convert video to audio when necessary,
     then transcribe using Gemini 3.5 Transcribe.
 
@@ -48,7 +48,7 @@ async def transcribe_audio(
     )
 
     file_bytes = (
-        supabase.storage
+        db.storage
         .from_(bucket)
         .download(path)
     )

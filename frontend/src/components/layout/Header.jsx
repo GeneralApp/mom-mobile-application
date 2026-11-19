@@ -26,11 +26,11 @@ export function Header({
         <div className="md:hidden flex items-center gap-1.5 shrink-0">
           <img
             src={logo}
-            alt="MOM Creator"
+            alt="Samvadini"
             className="w-7 h-7 object-contain rounded-md"
           />
           <span className="text-xs font-bold tracking-tight text-white">
-            MOM Creator
+            Samvadini
           </span>
         </div>
 

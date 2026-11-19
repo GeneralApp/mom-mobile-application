@@ -4,17 +4,19 @@ from uuid import uuid4
 from datetime import datetime, timezone, timedelta
 import hashlib
 import secrets
-from supabase import Client
+from app.db import Client
 
 from app.core.security import (
     get_access_token,
-    get_supabase,
+    get_db,
     get_authenticated_user,
 )
 
-from app.services.supabase import (
-    create_admin_supabase_client,
+from app.db import (
+    get_admin_db,
 )
+from app.services.auth import find_user_by_email
+from app.services.email import send_workspace_invitation_email
 
 from app.schemas.workspace import (
     WorkspaceCreate,
@@ -64,16 +66,16 @@ def create_invitation_token() -> str:
     response_model=list[WorkspaceResponse],
 )
 async def list_workspaces(
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
     access_token: str = Depends(get_access_token),
 ):
     user = get_authenticated_user(
-        supabase,
+        db,
         access_token,
     )
 
     response = (
-        supabase
+        db
         .table("workspace_members")
         .select(
             """
@@ -122,7 +124,7 @@ async def list_workspaces(
 )
 async def create_workspace(
     payload: WorkspaceCreate,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
     access_token: str = Depends(get_access_token),
 ):
     # --------------------------------------------------------
@@ -130,7 +132,7 @@ async def create_workspace(
     # --------------------------------------------------------
 
     user = get_authenticated_user(
-        supabase,
+        db,
         access_token,
     )
 
@@ -152,10 +154,10 @@ async def create_workspace(
     # 3. Use trusted admin client for INSERT
     # --------------------------------------------------------
 
-    admin_supabase = create_admin_supabase_client()
+    admin_db = get_admin_db()
 
     try:
-        admin_supabase.table("workspaces").insert(
+        admin_db.table("workspaces").insert(
             {
                 "id": workspace_id,
                 "name": name,
@@ -176,7 +178,7 @@ async def create_workspace(
 
     try:
         response = (
-            admin_supabase
+            admin_db
             .table("workspaces")
             .select(
                 """
@@ -226,7 +228,7 @@ async def create_workspace(
 async def create_workspace_invitation(
     workspace_id: str,
     payload: WorkspaceInvitationCreate,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
     access_token: str = Depends(get_access_token),
 ):
     # --------------------------------------------------------
@@ -234,7 +236,7 @@ async def create_workspace_invitation(
     # --------------------------------------------------------
 
     user = get_authenticated_user(
-        supabase,
+        db,
         access_token,
     )
 
@@ -243,7 +245,7 @@ async def create_workspace_invitation(
     # --------------------------------------------------------
 
     membership = (
-        supabase
+        db
         .table("workspace_members")
         .select("role")
         .eq("workspace_id", workspace_id)
@@ -274,52 +276,38 @@ async def create_workspace_invitation(
     # 4. Create admin client and check existing user/member
     # --------------------------------------------------------
 
-    admin_supabase = create_admin_supabase_client()
+    admin_db = get_admin_db()
 
     try:
-        existing_users_response = admin_supabase.auth.admin.list_users()
-
-        # Supabase Python client versions can return either a response
-        # object containing .users or the users list directly.
-        existing_users = getattr(
-            existing_users_response,
-            "users",
-            existing_users_response,
-        ) or []
-
+        existing_user = find_user_by_email(email)
     except Exception as exc:
         raise HTTPException(
             status_code=500,
             detail=f"Could not check existing users: {exc}",
         )
 
-    for existing in existing_users:
-        existing_email = getattr(existing, "email", None)
+    if existing_user:
+        existing_membership = (
+            admin_db
+            .table("workspace_members")
+            .select("user_id")
+            .eq("workspace_id", workspace_id)
+            .eq("user_id", existing_user["id"])
+            .execute()
+        )
 
-        if existing_email and existing_email.lower() == email:
-            existing_membership = (
-                admin_supabase
-                .table("workspace_members")
-                .select("user_id")
-                .eq("workspace_id", workspace_id)
-                .eq("user_id", existing.id)
-                .execute()
+        if existing_membership and existing_membership.data:
+            raise HTTPException(
+                status_code=409,
+                detail="This user is already a member of the workspace",
             )
-
-            if existing_membership and existing_membership.data:
-                raise HTTPException(
-                    status_code=409,
-                    detail="This user is already a member of the workspace",
-                )
-
-            break
 
     # --------------------------------------------------------
     # 5. Check for existing pending invitation
     # --------------------------------------------------------
 
     existing_invitation = (
-        admin_supabase
+        admin_db
         .table("workspace_invitations")
         .select(
             """
@@ -360,7 +348,7 @@ async def create_workspace_invitation(
 
     try:
         response = (
-            admin_supabase
+            admin_db
             .table("workspace_invitations")
             .insert(
                 {
@@ -402,7 +390,7 @@ async def create_workspace_invitation(
 
     try:
         workspace_response = (
-            admin_supabase
+            admin_db
             .table("workspaces")
             .select("name")
             .eq("id", workspace_id)
@@ -435,33 +423,19 @@ async def create_workspace_invitation(
     )
 
     # --------------------------------------------------------
-    # 10. Send invitation email through Supabase Edge Function
+    # 10. Send invitation email (Resend)
     # --------------------------------------------------------
 
     try:
-        function_response = admin_supabase.functions.invoke(
-            "send-workspace-invitation",
-            {
-                "body": {
-                    "email": email,
-                    "workspaceName": workspace_name,
-                    "invitationUrl": invitation_url,
-                }
-            },
+        await send_workspace_invitation_email(
+            email,
+            workspace_name,
+            invitation_url,
         )
-
-        function_error = getattr(
-            function_response,
-            "error",
-            None,
-        )
-
-        if function_error:
-            raise RuntimeError(str(function_error))
 
     except Exception as exc:
         try:
-            admin_supabase.table(
+            admin_db.table(
                 "workspace_invitations"
             ).update(
                 {
@@ -506,7 +480,7 @@ async def create_workspace_invitation(
 )
 async def accept_workspace_invitation(
     token: str,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
     access_token: str = Depends(get_access_token),
 ):
     # --------------------------------------------------------
@@ -514,7 +488,7 @@ async def accept_workspace_invitation(
     # --------------------------------------------------------
 
     user = get_authenticated_user(
-        supabase,
+        db,
         access_token,
     )
 
@@ -532,14 +506,14 @@ async def accept_workspace_invitation(
 
     token_hash = hash_invitation_token(token)
 
-    admin_supabase = create_admin_supabase_client()
+    admin_db = get_admin_db()
 
     # --------------------------------------------------------
     # 3. Find invitation
     # --------------------------------------------------------
 
     response = (
-        admin_supabase
+        admin_db
         .table("workspace_invitations")
         .select(
             """
@@ -585,7 +559,7 @@ async def accept_workspace_invitation(
     )
 
     if expires_at <= datetime.now(timezone.utc):
-        admin_supabase.table(
+        admin_db.table(
             "workspace_invitations"
         ).update(
             {
@@ -622,7 +596,7 @@ async def accept_workspace_invitation(
     # --------------------------------------------------------
 
     existing_membership = (
-        admin_supabase
+        admin_db
         .table("workspace_members")
         .select("user_id, role")
         .eq(
@@ -639,7 +613,7 @@ async def accept_workspace_invitation(
 
     if existing_membership and existing_membership.data:
         # Mark invitation accepted even though membership already exists
-        admin_supabase.table(
+        admin_db.table(
             "workspace_invitations"
         ).update(
             {
@@ -667,7 +641,7 @@ async def accept_workspace_invitation(
 
     try:
         member_response = (
-            admin_supabase
+            admin_db
             .table("workspace_members")
             .insert(
                 {
@@ -696,7 +670,7 @@ async def accept_workspace_invitation(
     # --------------------------------------------------------
 
     try:
-        admin_supabase.table(
+        admin_db.table(
             "workspace_invitations"
         ).update(
             {
@@ -740,7 +714,7 @@ async def accept_workspace_invitation(
 async def remove_workspace_member(
     workspace_id: str,
     member_user_id: str,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
     access_token: str = Depends(get_access_token),
 ):
     # --------------------------------------------------------
@@ -748,7 +722,7 @@ async def remove_workspace_member(
     # --------------------------------------------------------
 
     user = get_authenticated_user(
-        supabase,
+        db,
         access_token,
     )
 
@@ -757,7 +731,7 @@ async def remove_workspace_member(
     # --------------------------------------------------------
 
     membership = (
-        supabase
+        db
         .table("workspace_members")
         .select("role")
         .eq("workspace_id", workspace_id)
@@ -788,10 +762,10 @@ async def remove_workspace_member(
     # 3. Verify target member exists and is not an owner
     # --------------------------------------------------------
 
-    admin_supabase = create_admin_supabase_client()
+    admin_db = get_admin_db()
 
     target = (
-        admin_supabase
+        admin_db
         .table("workspace_members")
         .select("user_id, role")
         .eq("workspace_id", workspace_id)
@@ -817,7 +791,7 @@ async def remove_workspace_member(
     # --------------------------------------------------------
 
     response = (
-        admin_supabase
+        admin_db
         .table("workspace_members")
         .delete()
         .eq("workspace_id", workspace_id)
@@ -847,7 +821,7 @@ async def remove_workspace_member(
 async def revoke_workspace_invitation(
     workspace_id: str,
     invitation_id: str,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
     access_token: str = Depends(get_access_token),
 ):
     # --------------------------------------------------------
@@ -855,7 +829,7 @@ async def revoke_workspace_invitation(
     # --------------------------------------------------------
 
     user = get_authenticated_user(
-        supabase,
+        db,
         access_token,
     )
 
@@ -864,7 +838,7 @@ async def revoke_workspace_invitation(
     # --------------------------------------------------------
 
     membership = (
-        supabase
+        db
         .table("workspace_members")
         .select("role")
         .eq(
@@ -895,10 +869,10 @@ async def revoke_workspace_invitation(
     # 3. Revoke invitation
     # --------------------------------------------------------
 
-    admin_supabase = create_admin_supabase_client()
+    admin_db = get_admin_db()
 
     response = (
-        admin_supabase
+        admin_db
         .table("workspace_invitations")
         .update(
             {
@@ -943,7 +917,7 @@ async def revoke_workspace_invitation(
 )
 async def get_workspace(
     workspace_id: str,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
     access_token: str = Depends(get_access_token),
 ):
     # --------------------------------------------------------
@@ -951,7 +925,7 @@ async def get_workspace(
     # --------------------------------------------------------
 
     user = get_authenticated_user(
-        supabase,
+        db,
         access_token,
     )
 
@@ -960,7 +934,7 @@ async def get_workspace(
     # --------------------------------------------------------
 
     membership = (
-        supabase
+        db
         .table("workspace_members")
         .select("role")
         .eq(
@@ -986,7 +960,7 @@ async def get_workspace(
     # --------------------------------------------------------
 
     response = (
-        supabase
+        db
         .table("workspaces")
         .select(
             """
@@ -1025,7 +999,7 @@ async def get_workspace(
 async def update_workspace(
     workspace_id: str,
     payload: WorkspaceUpdate,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
     access_token: str = Depends(get_access_token),
 ):
     # --------------------------------------------------------
@@ -1033,7 +1007,7 @@ async def update_workspace(
     # --------------------------------------------------------
 
     user = get_authenticated_user(
-        supabase,
+        db,
         access_token,
     )
 
@@ -1042,7 +1016,7 @@ async def update_workspace(
     # --------------------------------------------------------
 
     membership = (
-        supabase
+        db
         .table("workspace_members")
         .select("role")
         .eq(
@@ -1100,7 +1074,7 @@ async def update_workspace(
     # --------------------------------------------------------
 
     response = (
-        supabase
+        db
         .table("workspaces")
         .update(updates)
         .eq(
@@ -1139,7 +1113,7 @@ async def update_workspace(
 )
 async def get_workspace_members(
     workspace_id: str,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
     access_token: str = Depends(get_access_token),
 ):
     # --------------------------------------------------------
@@ -1147,7 +1121,7 @@ async def get_workspace_members(
     # --------------------------------------------------------
 
     user = get_authenticated_user(
-        supabase,
+        db,
         access_token,
     )
 
@@ -1156,7 +1130,7 @@ async def get_workspace_members(
     # --------------------------------------------------------
 
     membership = (
-        supabase
+        db
         .table("workspace_members")
         .select("role")
         .eq(
@@ -1182,7 +1156,7 @@ async def get_workspace_members(
     # --------------------------------------------------------
 
     response = (
-        supabase
+        db
         .table("workspace_members")
         .select(
             """

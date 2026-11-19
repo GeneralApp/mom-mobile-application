@@ -1,6 +1,7 @@
 fastapi
 uvicorn
-supabase
+pymongo>=4.10
+pyjwt>=2.8
 pydantic
 pydantic-settings
 httpx

@@ -1,11 +1,11 @@
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-from supabase import Client
+from app.db import Client
 
 from app.core.security import (
     get_access_token,
-    get_supabase,
+    get_db,
     get_authenticated_user,
 )
 from app.schemas.fireflies import (
@@ -20,7 +20,7 @@ from app.services.fireflies import (
     sync_fireflies_connection,
     validate_api_key,
 )
-from app.services.supabase import create_admin_supabase_client
+from app.db import get_admin_db
 
 
 router = APIRouter(
@@ -32,12 +32,12 @@ router = APIRouter(
 
 
 def require_workspace_membership(
-    supabase: Client,
+    db: Client,
     workspace_id: str,
     user_id: str,
 ) -> None:
     response = (
-        supabase
+        db
         .table("workspace_members")
         .select("workspace_id,role")
         .eq("workspace_id", workspace_id)
@@ -54,11 +54,11 @@ def require_workspace_membership(
 
 
 def get_connection(
-    admin_supabase: Client,
+    admin_db: Client,
     workspace_id: str,
 ):
     response = (
-        admin_supabase
+        admin_db
         .table("fireflies_connections")
         .select("*")
         .eq("workspace_id", workspace_id)
@@ -88,21 +88,21 @@ def parse_datetime(value):
 )
 async def get_fireflies_status(
     workspace_id: str,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
     access_token: str = Depends(get_access_token),
 ):
     user = get_authenticated_user(
-        supabase,
+        db,
         access_token,
     )
 
     require_workspace_membership(
-        supabase,
+        db,
         workspace_id,
         user.id,
     )
 
-    admin = create_admin_supabase_client()
+    admin = get_admin_db()
 
     row = get_connection(
         admin,
@@ -155,16 +155,16 @@ async def get_fireflies_status(
 )
 async def connect_fireflies(
     payload: FirefliesConnectRequest,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
     access_token: str = Depends(get_access_token),
 ):
     user = get_authenticated_user(
-        supabase,
+        db,
         access_token,
     )
 
     require_workspace_membership(
-        supabase,
+        db,
         payload.workspace_id,
         user.id,
     )
@@ -181,7 +181,7 @@ async def connect_fireflies(
             detail=f"Could not validate Fireflies API key: {exc}",
         )
 
-    admin = create_admin_supabase_client()
+    admin = get_admin_db()
 
     existing_response = (
         admin
@@ -247,21 +247,21 @@ async def connect_fireflies(
 )
 async def disconnect_fireflies(
     workspace_id: str,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
     access_token: str = Depends(get_access_token),
 ):
     user = get_authenticated_user(
-        supabase,
+        db,
         access_token,
     )
 
     require_workspace_membership(
-        supabase,
+        db,
         workspace_id,
         user.id,
     )
 
-    admin = create_admin_supabase_client()
+    admin = get_admin_db()
 
     (
         admin
@@ -288,21 +288,21 @@ async def disconnect_fireflies(
 )
 async def refresh_fireflies(
     workspace_id: str,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
     access_token: str = Depends(get_access_token),
 ):
     user = get_authenticated_user(
-        supabase,
+        db,
         access_token,
     )
 
     require_workspace_membership(
-        supabase,
+        db,
         workspace_id,
         user.id,
     )
 
-    admin = create_admin_supabase_client()
+    admin = get_admin_db()
 
     connection = get_connection(
         admin,
@@ -364,7 +364,7 @@ async def refresh_fireflies(
         )
 
     result = await sync_fireflies_connection(
-        admin_supabase=admin,
+        admin_db=admin,
         connection=connection,
     )
 

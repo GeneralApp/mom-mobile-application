@@ -50,11 +50,14 @@ export function Sidebar({
         <div className="flex items-center gap-2.5 min-w-0">
           <img
             src={logo}
-            alt="MOM Creator"
+            alt="Samvadini"
             className="h-10 w-10 object-contain rounded-xl shrink-0 drop-shadow-sm bg-white/5 p-0.5"
           />
           <div className="min-w-0">
             <span className="text-sm font-extrabold tracking-wide text-white block leading-tight">
+              SAMVADINI
+            </span>
+            <span className="text-[9px] font-bold tracking-wider text-cyan-400 uppercase block">
               MOM CREATOR
             </span>
           </div>

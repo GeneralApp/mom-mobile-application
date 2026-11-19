@@ -160,7 +160,7 @@ export function MeetingDetailPage({
         bucket = 'meeting-audio';
       }
 
-      // 1. Upload to Supabase Storage
+      // 1. Upload the recording to storage
       const uploaded = await uploadToStorage({
         file,
         bucket,

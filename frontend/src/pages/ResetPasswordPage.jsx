@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
 import { Lock, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
-import { getSupabase } from '../lib/supabase.js';
+import { resetPasswordWithToken } from '../services/auth.js';
 import { Button } from '../components/common/Button.jsx';
 import { Input } from '../components/common/Input.jsx';
 import logo from '../assets/logo.png';
 
 export function ResetPasswordPage({ onNavigateToLogin, onNavigateToForgotPassword }) {
-  const { updatePassword, configured } = useAuth();
+  const { configured } = useAuth();
 
   const [ready, setReady] = useState(false);
+  const [token, setToken] = useState('');
   const [checking, setChecking] = useState(true);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -20,44 +21,21 @@ export function ResetPasswordPage({ onNavigateToLogin, onNavigateToForgotPasswor
   useEffect(() => {
     let active = true;
 
-    const checkRecoverySession = async () => {
-      try {
-        const supabase = getSupabase();
+    // The emailed link looks like /reset-password?token=...
+    const params = new URLSearchParams(window.location.search);
+    const resetToken = params.get('token') || '';
 
-        if (!supabase) {
-          if (active) setError('Supabase is not configured.');
-          return;
-        }
-
-        const { data, error: sessionError } =
-          await supabase.auth.getSession();
-
-        if (sessionError) {
-          throw sessionError;
-        }
-
-        if (!active) return;
-
-        if (data.session) {
-          setReady(true);
-        } else {
-          setError(
-            'This password reset link is invalid or has expired. Please request a new one.'
-          );
-        }
-      } catch (err) {
-        if (active) {
-          setError(
-            err?.message ||
-              'Unable to validate the password reset link.'
-          );
-        }
-      } finally {
-        if (active) setChecking(false);
+    if (active) {
+      if (resetToken) {
+        setToken(resetToken);
+        setReady(true);
+      } else {
+        setError(
+          'This password reset link is invalid or has expired. Please request a new one.'
+        );
       }
-    };
-
-    checkRecoverySession();
+      setChecking(false);
+    }
 
     return () => {
       active = false;
@@ -81,11 +59,11 @@ export function ResetPasswordPage({ onNavigateToLogin, onNavigateToForgotPasswor
     setLoading(true);
 
     try {
-      await updatePassword(password);
+      await resetPasswordWithToken(token, password);
       setSuccess(true);
 
-      const supabase = getSupabase();
-      await supabase?.auth.signOut();
+      // Drop the token from the address bar once it has been used.
+      window.history.replaceState({}, '', '/reset-password');
     } catch (err) {
       setError(
         err?.message ||
@@ -102,14 +80,14 @@ export function ResetPasswordPage({ onNavigateToLogin, onNavigateToForgotPasswor
         <div className="text-center space-y-2">
           <img
             src={logo}
-            alt="MOM Creator"
+            alt="Samvadini"
             className="w-20 h-20 object-contain mx-auto drop-shadow-sm rounded-2xl"
           />
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
             Set a new password
           </h1>
           <p className="text-xs text-slate-500">
-            Choose a new password for your MOM Creator account.
+            Choose a new password for your Samvadini account.
           </p>
         </div>
 

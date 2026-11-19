@@ -3,12 +3,12 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse
-from supabase import Client
+from app.db import Client
 
 from app.core.config import get_settings
 from app.core.security import (
     get_access_token,
-    get_supabase,
+    get_db,
     get_authenticated_user,
 )
 from app.schemas.calendar import CalendarEventCreate
@@ -25,7 +25,7 @@ from app.services.google_oauth import (
     build_google_authorization_url,
     refresh_access_token,
 )
-from app.services.supabase import create_admin_supabase_client
+from app.db import get_admin_db
 
 
 settings = get_settings()
@@ -50,11 +50,11 @@ def frontend_redirect(status: str) -> RedirectResponse:
 
 
 async def get_action_item_or_404(
-    supabase: Client,
+    db: Client,
     action_item_id: str,
 ) -> dict[str, Any]:
     response = (
-        supabase
+        db
         .table("action_items")
         .select(
             "id,mom_id,meeting_id,created_by,assigned_to,"
@@ -74,11 +74,11 @@ async def get_action_item_or_404(
 
 
 async def get_meeting_for_action_item(
-    supabase_admin: Client,
+    admin_db: Client,
     meeting_id: str,
 ) -> dict[str, Any]:
     response = (
-        supabase_admin
+        admin_db
         .table("meetings")
         .select("id,workspace_id,created_by,title")
         .eq("id", meeting_id)
@@ -95,7 +95,7 @@ async def get_meeting_for_action_item(
 
 
 async def user_can_sync_action_item(
-    supabase_admin: Client,
+    admin_db: Client,
     user_id: str,
     meeting: dict[str, Any],
     action_item: dict[str, Any],
@@ -107,7 +107,7 @@ async def user_can_sync_action_item(
         return True
 
     membership = (
-        supabase_admin
+        admin_db
         .table("workspace_members")
         .select("role")
         .eq("workspace_id", meeting["workspace_id"])
@@ -123,10 +123,10 @@ async def user_can_sync_action_item(
 
 @router.get("/connect")
 async def connect_google_calendar(
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
     access_token: str = Depends(get_access_token),
 ):
-    user = get_authenticated_user(supabase, access_token)
+    user = get_authenticated_user(db, access_token)
 
     scopes = []
     for scope in [*GOOGLE_MEET_SCOPES, *GOOGLE_CALENDAR_SCOPES]:
@@ -150,11 +150,11 @@ async def connect_google_calendar(
 
 @router.get("/status")
 async def google_calendar_status(
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
     access_token: str = Depends(get_access_token),
 ):
-    user = get_authenticated_user(supabase, access_token)
-    admin = create_admin_supabase_client()
+    user = get_authenticated_user(db, access_token)
+    admin = get_admin_db()
 
     response = (
         admin
@@ -187,13 +187,13 @@ async def google_calendar_status(
 async def create_calendar_event_for_action_item(
     action_item_id: str,
     payload: CalendarEventCreate,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
     access_token: str = Depends(get_access_token),
 ):
-    user = get_authenticated_user(supabase, access_token)
-    action_item = await get_action_item_or_404(supabase, action_item_id)
+    user = get_authenticated_user(db, access_token)
+    action_item = await get_action_item_or_404(db, action_item_id)
 
-    admin = create_admin_supabase_client()
+    admin = get_admin_db()
     meeting = await get_meeting_for_action_item(
         admin,
         action_item["meeting_id"],
@@ -303,11 +303,11 @@ async def create_calendar_event_for_action_item(
 @router.get("/action-items/{action_item_id}/event")
 async def get_calendar_event_for_action_item(
     action_item_id: str,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
     access_token: str = Depends(get_access_token),
 ):
-    user = get_authenticated_user(supabase, access_token)
-    action_item = await get_action_item_or_404(supabase, action_item_id)
+    user = get_authenticated_user(db, access_token)
+    action_item = await get_action_item_or_404(db, action_item_id)
 
     if not action_item.get("google_event_id"):
         raise HTTPException(
@@ -315,7 +315,7 @@ async def get_calendar_event_for_action_item(
             detail="Action item has not been synced to Google Calendar",
         )
 
-    admin = create_admin_supabase_client()
+    admin = get_admin_db()
     meeting = await get_meeting_for_action_item(
         admin,
         action_item["meeting_id"],
@@ -362,11 +362,11 @@ async def get_calendar_event_for_action_item(
 @router.delete("/action-items/{action_item_id}/event")
 async def delete_calendar_event_for_action_item(
     action_item_id: str,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
     access_token: str = Depends(get_access_token),
 ):
-    user = get_authenticated_user(supabase, access_token)
-    action_item = await get_action_item_or_404(supabase, action_item_id)
+    user = get_authenticated_user(db, access_token)
+    action_item = await get_action_item_or_404(db, action_item_id)
 
     if not action_item.get("google_event_id"):
         raise HTTPException(
@@ -374,7 +374,7 @@ async def delete_calendar_event_for_action_item(
             detail="Action item has not been synced to Google Calendar",
         )
 
-    admin = create_admin_supabase_client()
+    admin = get_admin_db()
     meeting = await get_meeting_for_action_item(
         admin,
         action_item["meeting_id"],

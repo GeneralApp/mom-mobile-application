@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
-from supabase import Client
+from app.db import Client
 
 from app.core.security import (
     get_access_token,
-    get_supabase,
+    get_db,
     get_authenticated_user,
 )
 from app.schemas.user import MeResponse
@@ -20,21 +20,21 @@ router = APIRouter(
     response_model=MeResponse,
 )
 async def get_current_user(
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
     access_token: str = Depends(get_access_token),
 ):
     """
     Return the currently authenticated user and their profile.
-    Supports both standard Supabase tokens and demo accounts.
+    Supports both regular session tokens and demo accounts.
     """
     user = get_authenticated_user(
-        supabase,
+        db,
         access_token,
     )
 
     try:
         response = (
-            supabase
+            db
             .table("profiles")
             .select(
                 "id,name,created_at,updated_at"
@@ -54,7 +54,7 @@ async def get_current_user(
         # If demo user profile is being created on the fly
         name = (user.user_metadata or {}).get("name") if hasattr(user, "user_metadata") else user.email
         try:
-            insert_res = supabase.table("profiles").insert({"id": user.id, "name": name}).execute()
+            insert_res = db.table("profiles").insert({"id": user.id, "name": name}).execute()
             profile_data = insert_res.data[0] if insert_res.data else {"id": user.id, "name": name}
         except Exception:
             profile_data = {"id": user.id, "name": name}

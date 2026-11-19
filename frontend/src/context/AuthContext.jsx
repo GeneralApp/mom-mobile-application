@@ -1,6 +1,13 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { getSupabase, isSupabaseConfigured } from '../lib/supabase.js';
-import { getMe, signInWithPassword, signUpWithPassword, signOutUser } from '../services/auth.js';
+import { getSession, onSessionChange } from '../lib/session.js';
+import {
+  getMe,
+  signInWithPassword,
+  signUpWithPassword,
+  signOutUser,
+  requestPasswordResetEmail,
+  changePassword,
+} from '../services/auth.js';
 import { findDemoAccount, isLocalEnvironment } from '../lib/demoAccounts.js';
 
 const AuthContext = createContext(null);
@@ -10,7 +17,8 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [configured, setConfigured] = useState(isSupabaseConfigured());
+  // Auth is served by our own backend, so it is always configured.
+  const configured = true;
   const [authError, setAuthError] = useState(null);
 
   const fetchProfile = useCallback(async () => {
@@ -46,15 +54,8 @@ export function AuthProvider({ children }) {
       }
     }
 
-    const supabase = getSupabase();
-    if (!supabase) {
-      setLoading(false);
-      setConfigured(false);
-      return;
-    }
-
     try {
-      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      const currentSession = getSession();
       setSession(currentSession);
       setUser(currentSession?.user || null);
 
@@ -93,19 +94,11 @@ export function AuthProvider({ children }) {
       }
     }
 
-    const supabase = getSupabase();
-    if (!supabase) {
-      setLoading(false);
-      setConfigured(false);
-      return;
-    }
-
-    setConfigured(true);
     refreshSession();
 
-    // Defer backend profile loading out of the Supabase onAuthStateChange callback
-    // to prevent awaiting while Supabase's internal auth lock is held
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
+    // Keep React state in sync when the stored session changes
+    // (sign-in, sign-out, password change, or an expired token).
+    const unsubscribe = onSessionChange((newSession) => {
       // Don't overwrite demo session
       if (localStorage.getItem('mom_demo_session')) {
         return;
@@ -125,7 +118,7 @@ export function AuthProvider({ children }) {
     });
 
     return () => {
-      subscription?.unsubscribe();
+      unsubscribe();
     };
   }, [refreshSession, fetchProfile]);
 
@@ -135,7 +128,7 @@ export function AuthProvider({ children }) {
     const demoAcc = findDemoAccount(cleanEmail);
     const isLocal = isLocalEnvironment();
 
-    // In the real project (not local), demo accounts do not require Supabase authentication
+    // In the real project (not local), demo accounts sign in without a password check
     if (!isLocal && demoAcc) {
       const demoUser = {
         id: demoAcc.id,
@@ -183,7 +176,7 @@ export function AuthProvider({ children }) {
       }
       return res;
     } catch (err) {
-      // In the real project, fallback to demo login if Supabase auth fails for a demo account
+      // In the real project, fall back to demo login if password sign-in fails for a demo account
       if (!isLocal && demoAcc) {
         const demoUser = {
           id: demoAcc.id,
@@ -239,26 +232,15 @@ export function AuthProvider({ children }) {
   const requestPasswordReset = async (email) => {
     setAuthError(null);
 
-    const supabase = getSupabase();
-
-    if (!supabase) {
-      throw new Error('Supabase is not configured.');
-    }
-
     const normalizedEmail = String(email || '').trim();
 
     if (!normalizedEmail) {
       throw new Error('Please enter your email address.');
     }
 
-    const redirectTo = `${window.location.origin}/reset-password`;
-
-    const { error } = await supabase.auth.resetPasswordForEmail(
-      normalizedEmail,
-      { redirectTo }
-    );
-
-    if (error) {
+    try {
+      await requestPasswordResetEmail(normalizedEmail);
+    } catch (error) {
       setAuthError(error.message || 'Failed to send password reset email.');
       throw error;
     }
@@ -269,22 +251,12 @@ export function AuthProvider({ children }) {
   const updatePassword = async (password) => {
     setAuthError(null);
 
-    const supabase = getSupabase();
-
-    if (!supabase) {
-      throw new Error('Supabase is not configured.');
-    }
-
-    const { data, error } = await supabase.auth.updateUser({
-      password,
-    });
-
-    if (error) {
+    try {
+      return await changePassword(password);
+    } catch (error) {
       setAuthError(error.message || 'Failed to update password.');
       throw error;
     }
-
-    return data;
   };
 
   const signOut = async () => {

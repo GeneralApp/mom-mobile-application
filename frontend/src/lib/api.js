@@ -1,5 +1,5 @@
 import { getApiBaseUrl } from './config.js';
-import { getSupabase } from './supabase.js';
+import { clearSession, getAccessToken } from './session.js';
 import { markBackendOnline } from '../services/backendWarmup.js';
 
 export class ApiError extends Error {
@@ -60,37 +60,18 @@ export async function apiRequest(endpoint, options = {}) {
 
   const headers = new Headers(options.headers || {});
 
-  // Check if a demo session is active
-  let demoToken = null;
-  try {
-    const demoRaw = localStorage.getItem('mom_demo_session');
-    if (demoRaw) {
-      const parsed = JSON.parse(demoRaw);
-      if (parsed?.access_token) {
-        demoToken = parsed.access_token;
-      }
-    }
-  } catch {}
-
-  if (demoToken) {
-    headers.set('Authorization', `Bearer ${demoToken}`);
-  } else {
-    // Retrieve current Supabase access token if Supabase is initialized
-    const supabase = getSupabase();
-    if (supabase) {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.access_token) {
-          headers.set('Authorization', `Bearer ${session.access_token}`);
-        }
-      } catch (e) {
-        console.warn('Could not retrieve Supabase session for API request:', e);
-      }
-    }
+  const accessToken = getAccessToken();
+  if (accessToken && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${accessToken}`);
   }
 
   // Set default Content-Type to JSON if not sending FormData and method has a body
-  if (options.body && !(options.body instanceof FormData) && !headers.has('Content-Type')) {
+  if (
+    options.body &&
+    !(options.body instanceof FormData) &&
+    !(options.body instanceof Blob) &&
+    !headers.has('Content-Type')
+  ) {
     headers.set('Content-Type', 'application/json');
   }
 
@@ -145,6 +126,10 @@ export async function apiRequest(endpoint, options = {}) {
       }
     } catch {
       // ignore
+    }
+
+    if (response.status === 401 && accessToken && !accessToken.startsWith('demo-token:')) {
+      clearSession();
     }
 
     const message = parseErrorMessage(response.status, errorData, response.statusText);

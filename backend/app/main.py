@@ -21,10 +21,12 @@ from app.api.routes.google_calendar import router as google_calendar_router
 from app.api.routes.google_meet import router as google_meet_router
 from app.api.routes.documents import router as documents_router
 from app.api.routes.fireflies import router as fireflies_router
+from app.api.routes.auth import router as auth_router
+from app.api.routes.storage import router as storage_router
 
 
 from app.services.fireflies import sync_fireflies_connection
-from app.services.supabase import create_admin_supabase_client
+from app.db import get_admin_db
 
 
 logger = logging.getLogger(__name__)
@@ -51,7 +53,7 @@ async def fireflies_scheduler():
 
         try:
 
-            admin = create_admin_supabase_client()
+            admin = get_admin_db()
 
             response = (
                 admin
@@ -177,6 +179,8 @@ app.add_middleware(
 # ============================================================
 
 app.include_router(health_router)
+app.include_router(auth_router)
+app.include_router(storage_router)
 app.include_router(users_router)
 app.include_router(users_router, prefix="/api/v1")
 app.include_router(workspaces_router)

@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
-from supabase import Client
+from app.db import Client
 
 from app.core.security import (
     get_access_token,
-    get_supabase,
+    get_db,
     get_authenticated_user,
 )
 from app.schemas.meeting import (
@@ -33,11 +33,11 @@ router = APIRouter(
 )
 async def create_meeting(
     payload: MeetingCreate,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
     access_token: str = Depends(get_access_token),
 ):
     user = get_authenticated_user(
-        supabase,
+        db,
         access_token,
     )
 
@@ -61,7 +61,7 @@ async def create_meeting(
     try:
         # Create meeting without .select()
         insert_response = (
-            supabase
+            db
             .table("meetings")
             .insert(
                 {
@@ -103,7 +103,7 @@ async def create_meeting(
     # Read the meeting back using a separate SELECT.
     try:
         response = (
-            supabase
+            db
             .table("meetings")
             .select(
                 """
@@ -152,10 +152,10 @@ async def create_meeting(
 )
 async def list_meetings(
     workspace_id: str,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
 ):
     response = (
-        supabase
+        db
         .table("meetings")
         .select(
             """
@@ -200,10 +200,10 @@ async def list_meetings(
 )
 async def get_meeting(
     meeting_id: str,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
 ):
     response = (
-        supabase
+        db
         .table("meetings")
         .select(
             """
@@ -228,11 +228,11 @@ async def get_meeting(
             "id",
             meeting_id,
         )
-        
+
         .execute()
     )
 
-    if response.data is None:
+    if not response.data:
         raise HTTPException(
             status_code=404,
             detail="Meeting not found",
@@ -252,7 +252,7 @@ async def get_meeting(
 async def update_meeting(
     meeting_id: str,
     payload: MeetingUpdate,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
 ):
     updates = {}
 
@@ -289,7 +289,7 @@ async def update_meeting(
         )
 
     response = (
-        supabase
+        db
         .table("meetings")
         .update(updates)
         .eq(
@@ -337,10 +337,10 @@ async def update_meeting(
 )
 async def delete_meeting(
     meeting_id: str,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
 ):
     response = (
-        supabase
+        db
         .table("meetings")
         .delete()
         .eq(

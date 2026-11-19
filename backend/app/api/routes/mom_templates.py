@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.services.supabase import create_admin_supabase_client
-from app.core.security import get_access_token
+from app.db import get_admin_db
+from app.core.security import get_access_token, resolve_user
 
 from app.schemas.mom_template import (
     MOMTemplateCreate,
@@ -20,38 +20,16 @@ BUCKET_NAME = "workspace-mom-template"
 
 
 def get_current_user_id(access_token: str) -> str:
-    try:
-        supabase = create_admin_supabase_client()
-
-        response = supabase.auth.get_user(access_token)
-
-        if not response or not response.user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Authentication required",
-            )
-
-        return response.user.id
-
-    except HTTPException:
-        raise
-
-    except Exception as exc:
-        print(f"[MOM TEMPLATE AUTH] {exc}")
-
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required",
-        )
+    return resolve_user(access_token).id
 
 
 def get_workspace_membership(
-    admin_supabase,
+    admin_db,
     workspace_id: str,
     user_id: str,
 ):
     response = (
-        admin_supabase
+        admin_db
         .table("workspace_members")
         .select("role")
         .eq("workspace_id", workspace_id)
@@ -67,12 +45,12 @@ def get_workspace_membership(
 
 
 def require_member(
-    admin_supabase,
+    admin_db,
     workspace_id: str,
     user_id: str,
 ):
     membership = get_workspace_membership(
-        admin_supabase,
+        admin_db,
         workspace_id,
         user_id,
     )
@@ -87,12 +65,12 @@ def require_member(
 
 
 def require_owner(
-    admin_supabase,
+    admin_db,
     workspace_id: str,
     user_id: str,
 ):
     membership = require_member(
-        admin_supabase,
+        admin_db,
         workspace_id,
         user_id,
     )
@@ -126,14 +104,14 @@ def validate_storage_path(
 
 
 def verify_storage_file(
-    admin_supabase,
+    admin_db,
     file_path: str,
 ):
     directory = "/".join(file_path.split("/")[:-1])
     filename = file_path.split("/")[-1]
 
     response = (
-        admin_supabase.storage
+        admin_db.storage
         .from_(BUCKET_NAME)
         .list(directory)
     )
@@ -165,16 +143,16 @@ def get_workspace_mom_template(
     access_token: str = Depends(get_access_token),
 ):
     user_id = get_current_user_id(access_token)
-    admin_supabase = create_admin_supabase_client()
+    admin_db = get_admin_db()
 
     require_member(
-        admin_supabase,
+        admin_db,
         workspace_id,
         user_id,
     )
 
     response = (
-        admin_supabase
+        admin_db
         .table("workspace_mom_templates")
         .select("*")
         .eq("workspace_id", workspace_id)
@@ -198,10 +176,10 @@ def create_workspace_mom_template(
     access_token: str = Depends(get_access_token),
 ):
     user_id = get_current_user_id(access_token)
-    admin_supabase = create_admin_supabase_client()
+    admin_db = get_admin_db()
 
     require_owner(
-        admin_supabase,
+        admin_db,
         workspace_id,
         user_id,
     )
@@ -218,12 +196,12 @@ def create_workspace_mom_template(
     )
 
     verify_storage_file(
-        admin_supabase,
+        admin_db,
         payload.file_path,
     )
 
     existing = (
-        admin_supabase
+        admin_db
         .table("workspace_mom_templates")
         .select("id")
         .eq("workspace_id", workspace_id)
@@ -238,7 +216,7 @@ def create_workspace_mom_template(
         )
 
     response = (
-        admin_supabase
+        admin_db
         .table("workspace_mom_templates")
         .insert(
             {
@@ -274,16 +252,16 @@ def update_workspace_mom_template(
     access_token: str = Depends(get_access_token),
 ):
     user_id = get_current_user_id(access_token)
-    admin_supabase = create_admin_supabase_client()
+    admin_db = get_admin_db()
 
     require_owner(
-        admin_supabase,
+        admin_db,
         workspace_id,
         user_id,
     )
 
     existing = (
-        admin_supabase
+        admin_db
         .table("workspace_mom_templates")
         .select("*")
         .eq("workspace_id", workspace_id)
@@ -324,12 +302,12 @@ def update_workspace_mom_template(
         )
 
         verify_storage_file(
-            admin_supabase,
+            admin_db,
             update_data["file_path"],
         )
 
     response = (
-        admin_supabase
+        admin_db
         .table("workspace_mom_templates")
         .update(update_data)
         .eq("workspace_id", workspace_id)
@@ -354,16 +332,16 @@ def delete_workspace_mom_template(
     access_token: str = Depends(get_access_token),
 ):
     user_id = get_current_user_id(access_token)
-    admin_supabase = create_admin_supabase_client()
+    admin_db = get_admin_db()
 
     require_owner(
-        admin_supabase,
+        admin_db,
         workspace_id,
         user_id,
     )
 
     existing = (
-        admin_supabase
+        admin_db
         .table("workspace_mom_templates")
         .select("file_path")
         .eq("workspace_id", workspace_id)
@@ -382,7 +360,7 @@ def delete_workspace_mom_template(
     if file_path:
         try:
             (
-                admin_supabase.storage
+                admin_db.storage
                 .from_(BUCKET_NAME)
                 .remove([file_path])
             )
@@ -392,7 +370,7 @@ def delete_workspace_mom_template(
             )
 
     response = (
-        admin_supabase
+        admin_db
         .table("workspace_mom_templates")
         .delete()
         .eq("workspace_id", workspace_id)

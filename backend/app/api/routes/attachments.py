@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from supabase import Client
-from app.services.supabase import create_admin_supabase_client
+from app.db import Client
+from app.db import get_admin_db
 
 from app.core.security import (
     get_access_token,
-    get_supabase,
+    get_db,
     get_authenticated_user,
 )
 
@@ -38,14 +38,14 @@ class UploadConfirmRequest(BaseModel):
 @router.post("/confirm")
 async def confirm_upload(
     payload: UploadConfirmRequest,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
     access_token: str = Depends(get_access_token),
 ):
     # --------------------------------------------------------
     # Authenticate user
     # --------------------------------------------------------
 
-    user = get_authenticated_user(supabase, access_token)
+    user = get_authenticated_user(db, access_token)
     user_id = user.id
 
     # --------------------------------------------------------
@@ -77,7 +77,7 @@ async def confirm_upload(
     # --------------------------------------------------------
 
     meeting_response = (
-        supabase
+        db
         .table("meetings")
         .select("id,workspace_id")
         .eq("id", payload.meeting_id)
@@ -111,7 +111,7 @@ async def confirm_upload(
     # Verify object actually exists
     # --------------------------------------------------------
 
-    admin_supabase = create_admin_supabase_client()
+    admin_db = get_admin_db()
 
     directory = "/".join(
         payload.path.split("/")[:-1]
@@ -120,7 +120,7 @@ async def confirm_upload(
     filename = payload.path.split("/")[-1]
 
     storage_response = (
-        admin_supabase.storage
+        admin_db.storage
         .from_(payload.bucket)
         .list(directory)
     )
@@ -147,7 +147,7 @@ async def confirm_upload(
     # --------------------------------------------------------
 
     response = (
-        supabase
+        db
         .table("attachments")
         .insert({
             "meeting_id": payload.meeting_id,

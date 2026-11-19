@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 import re
 
-from supabase import Client
+from app.db import Client
 
 from app.core.config import get_settings
 from app.services.mom_generator import generate_mom
@@ -66,7 +66,7 @@ TEXT_EXTENSIONS = {
 # ============================================================
 
 async def process_job(
-    supabase: Client,
+    db: Client,
     job_id: str,
 ):
     """
@@ -96,7 +96,7 @@ async def process_job(
     # --------------------------------------------------------
 
     job_response = (
-        supabase
+        db
         .table("processing_jobs")
         .select("*")
         .eq("id", job_id)
@@ -128,7 +128,7 @@ async def process_job(
         # Mark processing job as processing
         # ----------------------------------------------------
 
-        supabase.rpc(
+        db.rpc(
             "complete_processing_job",
             {
                 "target_job_id": job_id,
@@ -142,7 +142,7 @@ async def process_job(
         # Mark meeting as processing
         # ----------------------------------------------------
 
-        supabase.table(
+        db.table(
             "meetings"
         ).update(
             {
@@ -160,7 +160,7 @@ async def process_job(
         if job_type == "transcription":
 
             return await process_transcription_job(
-                supabase=supabase,
+                db=db,
                 job=job,
                 job_id=job_id,
             )
@@ -172,7 +172,7 @@ async def process_job(
         if job_type == "mom_generation":
 
             return await process_mom_generation_job(
-                supabase=supabase,
+                db=db,
                 job=job,
                 job_id=job_id,
             )
@@ -208,7 +208,7 @@ async def process_job(
 
         try:
 
-            supabase.rpc(
+            db.rpc(
                 "complete_processing_job",
                 {
                     "target_job_id": job_id,
@@ -231,7 +231,7 @@ async def process_job(
 
         try:
 
-            supabase.table(
+            db.table(
                 "meetings"
             ).update(
                 {
@@ -257,7 +257,7 @@ async def process_job(
 # ============================================================
 
 async def process_transcription_job(
-    supabase: Client,
+    db: Client,
     job: dict[str, Any],
     job_id: str,
 ):
@@ -310,7 +310,7 @@ async def process_transcription_job(
     # --------------------------------------------------------
 
     transcript = await transcribe_audio(
-        supabase=supabase,
+        db=db,
         bucket=bucket,
         path=input_file_path,
     )
@@ -338,7 +338,7 @@ async def process_transcription_job(
         "input_file_path": input_file_path,
     }
 
-    supabase.rpc(
+    db.rpc(
         "complete_processing_job",
         {
             "target_job_id": job_id,
@@ -372,7 +372,7 @@ async def process_transcription_job(
 # ============================================================
 
 async def process_mom_generation_job(
-    supabase: Client,
+    db: Client,
     job: dict[str, Any],
     job_id: str,
 ):
@@ -394,7 +394,7 @@ async def process_mom_generation_job(
     # --------------------------------------------------------
 
     meeting_response = (
-        supabase
+        db
         .table("meetings")
         .select("meeting_date")
         .eq("id", meeting_id)
@@ -424,7 +424,7 @@ async def process_mom_generation_job(
     # exists for the meeting.
 
     existing_mom_response = (
-        supabase
+        db
         .table("moms")
         .select("id,status")
         .eq("meeting_id", meeting_id)
@@ -445,7 +445,7 @@ async def process_mom_generation_job(
 
         # The requested job is still completed because there is
         # already a valid MOM for this meeting.
-        supabase.rpc(
+        db.rpc(
             "complete_processing_job",
             {
                 "target_job_id": job_id,
@@ -458,7 +458,7 @@ async def process_mom_generation_job(
             },
         ).execute()
 
-        supabase.table(
+        db.table(
             "meetings"
         ).update({
             "status": "completed",
@@ -488,7 +488,7 @@ async def process_mom_generation_job(
     # --------------------------------------------------------
 
     transcription_response = (
-        supabase
+        db
         .table("processing_jobs")
         .select(
             """
@@ -560,7 +560,7 @@ async def process_mom_generation_job(
         if input_file_path:
 
             transcript = await load_text_input(
-                supabase=supabase,
+                db=db,
                 path=input_file_path,
             )
 
@@ -643,7 +643,7 @@ async def process_mom_generation_job(
     try:
 
         mom_response = (
-            supabase
+            db
             .table("moms")
             .insert({
                 "meeting_id": meeting_id,
@@ -702,7 +702,7 @@ async def process_mom_generation_job(
         )
 
         existing_mom_response = (
-            supabase
+            db
             .table("moms")
             .select("id,status")
             .eq("meeting_id", meeting_id)
@@ -717,7 +717,7 @@ async def process_mom_generation_job(
 
         mom_id = existing_mom_response.data[0]["id"]
 
-        supabase.rpc(
+        db.rpc(
             "complete_processing_job",
             {
                 "target_job_id": job_id,
@@ -731,7 +731,7 @@ async def process_mom_generation_job(
             },
         ).execute()
 
-        supabase.table(
+        db.table(
             "meetings"
         ).update({
             "status": "completed",
@@ -774,7 +774,7 @@ async def process_mom_generation_job(
             normalized_due_date,
         )
 
-        supabase.table(
+        db.table(
             "action_items"
         ).insert({
             "mom_id": mom_id,
@@ -808,7 +808,7 @@ async def process_mom_generation_job(
     # Complete processing job
     # --------------------------------------------------------
 
-    supabase.rpc(
+    db.rpc(
         "complete_processing_job",
         {
             "target_job_id": job_id,
@@ -830,7 +830,7 @@ async def process_mom_generation_job(
     # Mark meeting as completed
     # --------------------------------------------------------
 
-    supabase.table(
+    db.table(
         "meetings"
     ).update({
         "status": "completed",
@@ -860,11 +860,11 @@ async def process_mom_generation_job(
 # ============================================================
 
 async def load_text_input(
-    supabase: Client,
+    db: Client,
     path: str,
 ) -> str:
     """
-    Load a text-based input from Supabase Storage.
+    Load a text-based input from MongoDB file storage.
 
     This currently supports plain text formats.
 
@@ -887,7 +887,7 @@ async def load_text_input(
     )
 
     file_bytes = (
-        supabase.storage
+        db.storage
         .from_("meeting-files")
         .download(path)
     )

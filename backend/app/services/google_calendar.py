@@ -2,7 +2,7 @@ from typing import Any
 from urllib.parse import quote
 
 import httpx
-from supabase import Client
+from app.db import Client
 
 
 GOOGLE_CALENDAR_BASE_URL = "https://www.googleapis.com/calendar/v3"

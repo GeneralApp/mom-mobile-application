@@ -1,11 +1,11 @@
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from supabase import Client
+from app.db import Client
 
 from app.core.security import (
     get_access_token,
-    get_supabase,
+    get_db,
     get_authenticated_user,
 )
 from app.schemas.action_item import (
@@ -22,11 +22,11 @@ router = APIRouter(
 
 
 async def get_meeting(
-    supabase: Client,
+    db: Client,
     meeting_id: str,
 ) -> dict[str, Any]:
     response = (
-        supabase
+        db
         .table("meetings")
         .select("id,workspace_id,created_by")
         .eq("id", meeting_id)
@@ -43,12 +43,12 @@ async def get_meeting(
 
 
 async def get_action_item(
-    supabase: Client,
+    db: Client,
     meeting_id: str,
     action_item_id: str,
 ) -> dict[str, Any]:
     response = (
-        supabase
+        db
         .table("action_items")
         .select(
             "id,mom_id,meeting_id,created_by,assigned_to,"
@@ -75,14 +75,14 @@ async def get_action_item(
 )
 async def list_action_items(
     meeting_id: str,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
     access_token: str = Depends(get_access_token),
 ):
-    get_authenticated_user(supabase, access_token)
-    await get_meeting(supabase, meeting_id)
+    get_authenticated_user(db, access_token)
+    await get_meeting(db, meeting_id)
 
     response = (
-        supabase
+        db
         .table("action_items")
         .select(
             "id,mom_id,meeting_id,created_by,assigned_to,"
@@ -106,14 +106,14 @@ async def list_action_items(
 async def create_action_item(
     meeting_id: str,
     payload: ActionItemCreate,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
     access_token: str = Depends(get_access_token),
 ):
-    user = get_authenticated_user(supabase, access_token)
-    meeting = await get_meeting(supabase, meeting_id)
+    user = get_authenticated_user(db, access_token)
+    meeting = await get_meeting(db, meeting_id)
 
     mom_response = (
-        supabase
+        db
         .table("moms")
         .select("id")
         .eq("meeting_id", meeting_id)
@@ -130,7 +130,7 @@ async def create_action_item(
 
     if payload.assigned_to:
         membership = (
-            supabase
+            db
             .table("workspace_members")
             .select("user_id")
             .eq("workspace_id", meeting["workspace_id"])
@@ -144,7 +144,7 @@ async def create_action_item(
             )
 
     response = (
-        supabase
+        db
         .table("action_items")
         .insert({
             "mom_id": mom_id,
@@ -181,13 +181,13 @@ async def update_action_item(
     meeting_id: str,
     action_item_id: str,
     payload: ActionItemUpdate,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
     access_token: str = Depends(get_access_token),
 ):
-    user = get_authenticated_user(supabase, access_token)
-    meeting = await get_meeting(supabase, meeting_id)
+    user = get_authenticated_user(db, access_token)
+    meeting = await get_meeting(db, meeting_id)
     action_item = await get_action_item(
-        supabase,
+        db,
         meeting_id,
         action_item_id,
     )
@@ -197,7 +197,7 @@ async def update_action_item(
         and action_item.get("assigned_to") != user.id
     ):
         membership = (
-            supabase
+            db
             .table("workspace_members")
             .select("role")
             .eq("workspace_id", meeting["workspace_id"])
@@ -227,7 +227,7 @@ async def update_action_item(
 
     if "assigned_to" in updates and updates["assigned_to"]:
         membership = (
-            supabase
+            db
             .table("workspace_members")
             .select("user_id")
             .eq("workspace_id", meeting["workspace_id"])
@@ -250,7 +250,7 @@ async def update_action_item(
         updates["completed_at"] = None
 
     response = (
-        supabase
+        db
         .table("action_items")
         .update(updates)
         .eq("id", action_item_id)
@@ -269,7 +269,7 @@ async def update_action_item(
         from datetime import datetime, timezone
 
         completed_update = (
-            supabase
+            db
             .table("action_items")
             .update({
                 "completed_at": datetime.now(timezone.utc).isoformat()
@@ -294,20 +294,20 @@ async def update_action_item(
 async def delete_action_item(
     meeting_id: str,
     action_item_id: str,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
     access_token: str = Depends(get_access_token),
 ):
-    user = get_authenticated_user(supabase, access_token)
-    meeting = await get_meeting(supabase, meeting_id)
+    user = get_authenticated_user(db, access_token)
+    meeting = await get_meeting(db, meeting_id)
     action_item = await get_action_item(
-        supabase,
+        db,
         meeting_id,
         action_item_id,
     )
 
     if action_item.get("created_by") != user.id:
         membership = (
-            supabase
+            db
             .table("workspace_members")
             .select("role")
             .eq("workspace_id", meeting["workspace_id"])
@@ -322,7 +322,7 @@ async def delete_action_item(
             raise HTTPException(status_code=403, detail="Forbidden")
 
     response = (
-        supabase
+        db
         .table("action_items")
         .delete()
         .eq("id", action_item_id)

@@ -34,7 +34,7 @@ function MainApp() {
   const { session, loading: authLoading } = useAuth();
 
   const [currentPath, setCurrentPath] = useState(() => {
-    // Detect if arriving from Supabase password recovery email link
+    // Detect if arriving from a password reset email link
     const isRecovery =
       window.location.hash.includes('type=recovery') ||
       window.location.search.includes('type=recovery') ||
@@ -96,7 +96,7 @@ function MainApp() {
           </div>
 
           <p className="text-xs font-medium text-slate-500">
-            Loading MOM Creator...
+            Loading Samvadini...
           </p>
         </div>
       </div>

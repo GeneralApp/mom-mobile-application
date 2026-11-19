@@ -17,8 +17,8 @@ export function RegisterPage({ onNavigateToLogin }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters');
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters');
       return;
     }
 
@@ -27,7 +27,7 @@ export function RegisterPage({ onNavigateToLogin }) {
 
     try {
       const res = await signUp(email.trim(), password, name.trim());
-      // When email confirmation is enabled in Supabase, res.user is created but res.session is null
+      // If the backend ever requires email confirmation it returns a user without a session
       if (res?.user && !res?.session) {
         setEmailConfirmationRequired(true);
       }
@@ -44,14 +44,14 @@ export function RegisterPage({ onNavigateToLogin }) {
         <div className="text-center space-y-2">
           <img
             src={logo}
-            alt="MOM Creator"
+            alt="Samvadini"
             className="w-20 h-20 object-contain mx-auto drop-shadow-sm rounded-2xl"
           />
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
             Create Your Account
           </h1>
           <p className="text-xs text-slate-500">
-            Get started with MOM Creator for automated Minutes of Meeting and task tracking.
+            Get started with Samvadini for automated Minutes of Meeting and task tracking.
           </p>
         </div>
 
@@ -105,7 +105,7 @@ export function RegisterPage({ onNavigateToLogin }) {
                 <Input
                   type="password"
                   label="Password"
-                  placeholder="At least 6 characters"
+                  placeholder="At least 8 characters"
                   icon={Lock}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}

@@ -3,7 +3,7 @@ from typing import Any
 from urllib.parse import quote
 
 import httpx
-from supabase import Client
+from app.db import Client
 
 from app.services.google_oauth import refresh_access_token
 
@@ -262,13 +262,13 @@ def format_structured_transcript(
 
 
 async def sync_transcript_for_meeting(
-    supabase_admin: Client,
+    admin_db: Client,
     user_id: str,
     meeting_id: str,
     space_name: str,
 ) -> dict[str, Any]:
     access_token = await refresh_access_token(
-        supabase_admin,
+        admin_db,
         user_id,
     )
 

@@ -8,7 +8,7 @@ from urllib.parse import urlencode
 
 import httpx
 from cryptography.fernet import Fernet
-from supabase import Client
+from app.db import Client
 
 from app.core.config import get_settings
 
@@ -221,11 +221,11 @@ async def exchange_authorization_code(code: str) -> dict[str, Any]:
 
 
 async def refresh_access_token(
-    supabase_admin: Client,
+    admin_db: Client,
     user_id: str,
 ) -> str:
     response = (
-        supabase_admin
+        admin_db
         .table("google_connections")
         .select("refresh_token_encrypted")
         .eq("user_id", user_id)
@@ -275,7 +275,7 @@ async def refresh_access_token(
 
     new_refresh_token = data.get("refresh_token")
     if new_refresh_token and new_refresh_token != refresh_token:
-        supabase_admin.table("google_connections").update({
+        admin_db.table("google_connections").update({
             "refresh_token_encrypted": encrypt_refresh_token(new_refresh_token),
         }).eq("user_id", user_id).execute()
 
@@ -283,14 +283,14 @@ async def refresh_access_token(
 
 
 def save_google_connection(
-    supabase_admin: Client,
+    admin_db: Client,
     user_id: str,
     token_data: dict[str, Any],
 ) -> None:
     refresh_token = token_data.get("refresh_token")
 
     existing = (
-        supabase_admin
+        admin_db
         .table("google_connections")
         .select("refresh_token_encrypted")
         .eq("user_id", user_id)
@@ -316,7 +316,7 @@ def save_google_connection(
 
     if existing.data:
         (
-            supabase_admin
+            admin_db
             .table("google_connections")
             .update(row)
             .eq("user_id", user_id)
@@ -324,7 +324,7 @@ def save_google_connection(
         )
     else:
         (
-            supabase_admin
+            admin_db
             .table("google_connections")
             .insert(row)
             .execute()

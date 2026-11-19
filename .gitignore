@@ -16,9 +16,6 @@ pnpm-debug.log*
 !.env.example
 !**/.env.example
 
-# Local Supabase CLI state
-supabase/.temp/
-
 # Editors and operating-system files
 .vscode/
 .idea/

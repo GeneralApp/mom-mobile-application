@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Mail, ArrowLeft, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Mail, ArrowLeft, CheckCircle2 } from 'lucide-react';
 import logo from '../assets/logo.png';
 import { useAuth } from '../context/AuthContext.jsx';
 import { Button } from '../components/common/Button.jsx';
@@ -38,7 +38,7 @@ export function ForgotPasswordPage({ onNavigateToLogin }) {
         <div className="text-center space-y-2">
           <img
             src={logo}
-            alt="MOM Creator"
+            alt="Samvadini"
             className="w-20 h-20 object-contain mx-auto drop-shadow-sm rounded-2xl"
           />
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
@@ -64,7 +64,7 @@ export function ForgotPasswordPage({ onNavigateToLogin }) {
                 <p className="mt-2 text-sm leading-6 text-slate-500">
                   If an account exists for this email address, a password
                   reset link has been sent. The link will take you back to
-                  MOM Creator to choose a new password.
+                  Samvadini to choose a new password.
                 </p>
               </div>
 
@@ -79,16 +79,6 @@ export function ForgotPasswordPage({ onNavigateToLogin }) {
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-5">
-              {!configured && (
-                <div className="p-3.5 rounded-lg bg-amber-50 border border-amber-200 text-xs flex items-start gap-2.5 text-amber-800">
-                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                  <p>
-                    Supabase is not configured. Check your VITE_SUPABASE_URL
-                    and VITE_SUPABASE_ANON_KEY environment variables.
-                  </p>
-                </div>
-              )}
-
               <Input
                 type="email"
                 label="Email Address"

@@ -3,11 +3,11 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
-from supabase import Client
+from app.db import Client
 
 from app.core.security import (
     get_access_token,
-    get_supabase,
+    get_db,
     get_authenticated_user,
 )
 from app.core.config import get_settings
@@ -22,7 +22,7 @@ from app.services.google_oauth import (
     save_google_connection,
     verify_oauth_state,
 )
-from app.services.supabase import create_admin_supabase_client
+from app.db import get_admin_db
 
 ALLOWED_GOOGLE_MEET_EMAIL = "thorataryan0@gmail.com"
 GOOGLE_MEET_UNAVAILABLE_MSG = "This feature will be available once the domain is specified."
@@ -45,11 +45,11 @@ def frontend_redirect(status: str) -> RedirectResponse:
 
 @router.get("/meet/connect")
 async def connect_google_meet(
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
     access_token: str = Depends(get_access_token),
 ):
     user = get_authenticated_user(
-        supabase,
+        db,
         access_token,
     )
 
@@ -89,10 +89,10 @@ async def google_meet_callback(
         user_id = payload["user_id"]
         token_data = await exchange_authorization_code(code)
 
-        supabase_admin = create_admin_supabase_client()
+        admin_db = get_admin_db()
 
         save_google_connection(
-            supabase_admin,
+            admin_db,
             user_id,
             token_data,
         )
@@ -106,11 +106,11 @@ async def google_meet_callback(
 @router.post("/meetings/{meeting_id}/meet")
 async def create_google_meet_for_meeting(
     meeting_id: str,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
     access_token: str = Depends(get_access_token),
 ) -> dict[str, Any]:
     user = get_authenticated_user(
-        supabase,
+        db,
         access_token,
     )
 
@@ -121,7 +121,7 @@ async def create_google_meet_for_meeting(
         )
 
     meeting_response = (
-        supabase
+        db
         .table("meetings")
         .select("id,workspace_id,created_by,mode,title")
         .eq("id", meeting_id)
@@ -148,7 +148,7 @@ async def create_google_meet_for_meeting(
             detail="Meeting mode must be google_meet",
         )
 
-    admin = create_admin_supabase_client()
+    admin = get_admin_db()
 
     existing = (
         admin
@@ -249,11 +249,11 @@ async def create_google_meet_for_meeting(
 @router.get("/meetings/{meeting_id}/meet")
 async def get_google_meet_for_meeting(
     meeting_id: str,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
     access_token: str = Depends(get_access_token),
 ) -> dict[str, Any]:
     user = get_authenticated_user(
-        supabase,
+        db,
         access_token,
     )
 
@@ -264,7 +264,7 @@ async def get_google_meet_for_meeting(
         )
 
     meeting_response = (
-        supabase
+        db
         .table("meetings")
         .select("id,created_by")
         .eq("id", meeting_id)
@@ -277,7 +277,7 @@ async def get_google_meet_for_meeting(
     if meeting_response.data[0].get("created_by") != user.id:
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    admin = create_admin_supabase_client()
+    admin = get_admin_db()
     response = (
         admin
         .table("online_meeting_integrations")
@@ -299,11 +299,11 @@ async def get_google_meet_for_meeting(
 @router.post("/meetings/{meeting_id}/meet/sync-transcript")
 async def sync_google_meet_transcript(
     meeting_id: str,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
     access_token: str = Depends(get_access_token),
 ) -> dict[str, Any]:
     user = get_authenticated_user(
-        supabase,
+        db,
         access_token,
     )
 
@@ -314,7 +314,7 @@ async def sync_google_meet_transcript(
         )
 
     meeting_response = (
-        supabase
+        db
         .table("meetings")
         .select("id,created_by")
         .eq("id", meeting_id)
@@ -327,7 +327,7 @@ async def sync_google_meet_transcript(
     if meeting_response.data[0].get("created_by") != user.id:
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    admin = create_admin_supabase_client()
+    admin = get_admin_db()
 
     integration_response = (
         admin

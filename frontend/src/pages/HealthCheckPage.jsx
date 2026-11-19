@@ -1,30 +1,32 @@
 import { useState, useEffect } from 'react';
 import { RefreshCw, CheckCircle2, AlertCircle, Server, Database, ShieldCheck } from 'lucide-react';
 import { Button } from '../components/common/Button.jsx';
-import { checkRoot, checkHealth, getMe } from '../services/auth.js';
-import { getApiBaseUrl, getSupabaseCredentials } from '../lib/config.js';
+import { checkRoot, checkHealth, checkDatabaseHealth, getMe } from '../services/auth.js';
+import { getApiBaseUrl } from '../lib/config.js';
 
 export function HealthCheckPage() {
   const [rootStatus, setRootStatus] = useState(null);
   const [healthStatus, setHealthStatus] = useState(null);
   const [meStatus, setMeStatus] = useState(null);
+  const [dbStatus, setDbStatus] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const creds = getSupabaseCredentials();
   const apiUrl = getApiBaseUrl();
 
   const runDiagnostics = async () => {
     setLoading(true);
     try {
-      const [r, h, m] = await Promise.allSettled([
+      const [r, h, m, d] = await Promise.allSettled([
         checkRoot(),
         checkHealth(),
         getMe(),
+        checkDatabaseHealth(),
       ]);
 
       setRootStatus(r.status === 'fulfilled' ? r.value : { error: r.reason?.message });
       setHealthStatus(h.status === 'fulfilled' ? h.value : { error: h.reason?.message });
       setMeStatus(m.status === 'fulfilled' ? m.value : { error: m.reason?.message });
+      setDbStatus(d.status === 'fulfilled' ? d.value : { status: 'error', detail: d.reason?.message });
     } catch (err) {
       console.warn('Diagnostics error:', err);
     } finally {
@@ -42,7 +44,7 @@ export function HealthCheckPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">System Diagnostics & API</h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Test backend health endpoints and verify FastAPI + Supabase connectivity.
+            Test backend health endpoints and verify FastAPI + MongoDB connectivity.
           </p>
         </div>
 
@@ -148,28 +150,32 @@ export function HealthCheckPage() {
           <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 space-y-1.5">
             <div className="flex items-center gap-2 text-slate-700 font-semibold">
               <Database className="w-4 h-4 text-brand-gradient" />
-              <span>Supabase Project</span>
-            </div>
-            <p className="font-mono text-[11px] text-slate-800 break-all">
-              {creds.url || 'Not configured'}
-            </p>
-            <p className="text-[10px] text-slate-500">Configured via VITE_SUPABASE_URL</p>
-          </div>
-
-          <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 space-y-1.5 md:col-span-2">
-            <div className="flex items-center gap-2 text-slate-700 font-semibold">
-              <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              <span>Supabase Public Anon Key</span>
+              <span>Database (MongoDB)</span>
             </div>
             <p className="text-[11px] text-slate-700">
-              {creds.key ? (
-                <span className="text-emerald-700 font-medium">✓ Configured in local environment</span>
+              {!dbStatus ? (
+                <span className="text-slate-500">Checking…</span>
+              ) : dbStatus.status === 'ok' ? (
+                <span className="text-emerald-700 font-medium">✓ Backend connected to MongoDB</span>
               ) : (
-                <span className="text-amber-700 font-medium">Missing VITE_SUPABASE_ANON_KEY</span>
+                <span className="text-amber-700 font-medium">
+                  Unreachable{dbStatus.detail ? `: ${dbStatus.detail}` : ''}
+                </span>
               )}
             </p>
+            <p className="text-[10px] text-slate-500">Configured on the backend via MONGODB_URI</p>
+          </div>
+
+          <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 space-y-1.5">
+            <div className="flex items-center gap-2 text-slate-700 font-semibold">
+              <ShieldCheck className="w-4 h-4 text-emerald-600" />
+              <span>Frontend secrets</span>
+            </div>
+            <p className="text-[11px] text-slate-700">
+              <span className="text-emerald-700 font-medium">✓ None required</span>
+            </p>
             <p className="text-[10px] text-slate-500">
-              Only the public/anon key is permitted in frontend client code.
+              The browser only talks to the FastAPI backend; database credentials stay on the server.
             </p>
           </div>
         </div>

@@ -5,7 +5,7 @@ from typing import Any
 
 import httpx
 from cryptography.fernet import Fernet
-from supabase import Client
+from app.db import Client
 
 from app.core.config import get_settings
 from app.services.processing import process_job
@@ -397,7 +397,7 @@ def build_participant_rows(
 # ============================================================
 
 async def import_transcript_into_workspace(
-    admin_supabase: Client,
+    admin_db: Client,
     connection: dict[str, Any],
     transcript_id: str,
 ) -> dict[str, Any]:
@@ -410,7 +410,7 @@ async def import_transcript_into_workspace(
     # --------------------------------------------------------
 
     existing_response = (
-        admin_supabase
+        admin_db
         .table("fireflies_meetings")
         .select("id,meeting_id,status")
         .eq(
@@ -446,7 +446,7 @@ async def import_transcript_into_workspace(
 
         try:
             (
-                admin_supabase
+                admin_db
                 .table("fireflies_meetings")
                 .insert(
                     {
@@ -464,7 +464,7 @@ async def import_transcript_into_workspace(
             pass
 
         existing_response = (
-            admin_supabase
+            admin_db
             .table("fireflies_meetings")
             .select(
                 "id,meeting_id,status"
@@ -544,7 +544,7 @@ async def import_transcript_into_workspace(
             )
 
         meeting_response = (
-            admin_supabase
+            admin_db
             .table("meetings")
             .insert(
                 {
@@ -595,7 +595,7 @@ async def import_transcript_into_workspace(
     }
 
     (
-        admin_supabase
+        admin_db
         .table("fireflies_meetings")
         .update(
             {
@@ -646,7 +646,7 @@ async def import_transcript_into_workspace(
     # --------------------------------------------------------
 
     existing_participants = (
-        admin_supabase
+        admin_db
         .table("meeting_participants")
         .select("id")
         .eq(
@@ -666,7 +666,7 @@ async def import_transcript_into_workspace(
 
         if rows:
             (
-                admin_supabase
+                admin_db
                 .table("meeting_participants")
                 .insert(
                     [
@@ -686,7 +686,7 @@ async def import_transcript_into_workspace(
     # --------------------------------------------------------
 
     existing_mom = (
-        admin_supabase
+        admin_db
         .table("moms")
         .select("id")
         .eq(
@@ -700,7 +700,7 @@ async def import_transcript_into_workspace(
     if existing_mom and existing_mom.data:
 
         (
-            admin_supabase
+            admin_db
             .table("fireflies_meetings")
             .update(
                 {
@@ -729,7 +729,7 @@ async def import_transcript_into_workspace(
     # --------------------------------------------------------
 
     transcription_jobs = (
-        admin_supabase
+        admin_db
         .table("processing_jobs")
         .select(
             "id,status,output_data,created_at"
@@ -769,7 +769,7 @@ async def import_transcript_into_workspace(
     if not completed_transcription:
 
         transcription_response = (
-            admin_supabase
+            admin_db
             .table("processing_jobs")
             .insert(
                 {
@@ -810,7 +810,7 @@ async def import_transcript_into_workspace(
     # --------------------------------------------------------
 
     mom_jobs = (
-        admin_supabase
+        admin_db
         .table("processing_jobs")
         .select(
             "id,status,created_at"
@@ -859,7 +859,7 @@ async def import_transcript_into_workspace(
     else:
 
         mom_response = (
-            admin_supabase
+            admin_db
             .table("processing_jobs")
             .insert(
                 {
@@ -893,12 +893,12 @@ async def import_transcript_into_workspace(
     # --------------------------------------------------------
 
     result = await process_job(
-        admin_supabase,
+        admin_db,
         mom_job_id,
     )
 
     (
-        admin_supabase
+        admin_db
         .table("fireflies_meetings")
         .update(
             {
@@ -931,7 +931,7 @@ async def import_transcript_into_workspace(
 # ============================================================
 
 async def sync_fireflies_connection(
-    admin_supabase: Client,
+    admin_db: Client,
     connection: dict[str, Any],
 ) -> dict[str, Any]:
 
@@ -956,7 +956,7 @@ async def sync_fireflies_connection(
             continue
 
         existing = (
-            admin_supabase
+            admin_db
             .table("fireflies_meetings")
             .select(
                 "id,meeting_id,status"
@@ -983,7 +983,7 @@ async def sync_fireflies_connection(
 
             result = (
                 await import_transcript_into_workspace(
-                    admin_supabase,
+                    admin_db,
                     connection,
                     transcript_id,
                 )
@@ -999,7 +999,7 @@ async def sync_fireflies_connection(
             )
 
             (
-                admin_supabase
+                admin_db
                 .table("fireflies_meetings")
                 .update(
                     {

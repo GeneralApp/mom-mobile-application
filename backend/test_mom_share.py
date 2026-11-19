@@ -4,7 +4,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.core.security import get_access_token, get_supabase
+from app.core.security import get_access_token, get_db
 
 
 class TestMOMShare(unittest.TestCase):
@@ -21,9 +21,9 @@ class TestMOMShare(unittest.TestCase):
         """Should fail if target_workspace_id is not a valid UUID."""
         app.dependency_overrides[get_access_token] = lambda: "fake-token"
         mock_user = MagicMock(id=self.owner_user_id)
-        mock_supabase = MagicMock()
-        mock_supabase.auth.get_user.return_value = MagicMock(user=mock_user)
-        app.dependency_overrides[get_supabase] = lambda: mock_supabase
+        mock_db = MagicMock()
+        mock_db.auth_user = mock_user
+        app.dependency_overrides[get_db] = lambda: mock_db
 
         try:
             response = self.client.post(
@@ -40,11 +40,11 @@ class TestMOMShare(unittest.TestCase):
         """Should fail if target workspace is same as source workspace."""
         app.dependency_overrides[get_access_token] = lambda: "fake-token"
         mock_user = MagicMock(id=self.owner_user_id)
-        mock_supabase = MagicMock()
-        mock_supabase.auth.get_user.return_value = MagicMock(user=mock_user)
-        app.dependency_overrides[get_supabase] = lambda: mock_supabase
+        mock_db = MagicMock()
+        mock_db.auth_user = mock_user
+        app.dependency_overrides[get_db] = lambda: mock_db
 
-        # Mock admin supabase queries
+        # Mock admin db queries
         mock_admin = MagicMock()
         # source_mom
         mock_admin.table().select().eq().execute.side_effect = [
@@ -54,7 +54,7 @@ class TestMOMShare(unittest.TestCase):
             MagicMock(data=[{"id": self.meeting_id, "workspace_id": self.source_workspace_id, "title": "Meeting 1"}]),
         ]
 
-        with patch("app.api.routes.moms.create_admin_supabase_client", return_value=mock_admin):
+        with patch("app.api.routes.moms.get_admin_db", return_value=mock_admin):
             try:
                 response = self.client.post(
                     f"/api/v1/moms/{self.mom_id}/share",
@@ -70,9 +70,9 @@ class TestMOMShare(unittest.TestCase):
         """Should fail with 403 if user is not workspace owner."""
         app.dependency_overrides[get_access_token] = lambda: "fake-token"
         mock_user = MagicMock(id=self.non_owner_id)
-        mock_supabase = MagicMock()
-        mock_supabase.auth.get_user.return_value = MagicMock(user=mock_user)
-        app.dependency_overrides[get_supabase] = lambda: mock_supabase
+        mock_db = MagicMock()
+        mock_db.auth_user = mock_user
+        app.dependency_overrides[get_db] = lambda: mock_db
 
         mock_admin = MagicMock()
         # 1. source mom
@@ -89,7 +89,7 @@ class TestMOMShare(unittest.TestCase):
         mock_membership.execute.return_value = MagicMock(data=[{"role": "member"}])
         mock_admin.table().select().eq().eq.return_value = mock_membership
 
-        with patch("app.api.routes.moms.create_admin_supabase_client", return_value=mock_admin):
+        with patch("app.api.routes.moms.get_admin_db", return_value=mock_admin):
             try:
                 response = self.client.post(
                     f"/api/v1/moms/{self.mom_id}/share",
@@ -105,9 +105,9 @@ class TestMOMShare(unittest.TestCase):
         """Should clone meeting, mom, action items, participants into target workspace."""
         app.dependency_overrides[get_access_token] = lambda: "fake-token"
         mock_user = MagicMock(id=self.owner_user_id)
-        mock_supabase = MagicMock()
-        mock_supabase.auth.get_user.return_value = MagicMock(user=mock_user)
-        app.dependency_overrides[get_supabase] = lambda: mock_supabase
+        mock_db = MagicMock()
+        mock_db.auth_user = mock_user
+        app.dependency_overrides[get_db] = lambda: mock_db
 
         mock_admin = MagicMock()
         # Sequence of queries:
@@ -171,7 +171,7 @@ class TestMOMShare(unittest.TestCase):
             }]),
         ]
 
-        with patch("app.api.routes.moms.create_admin_supabase_client", return_value=mock_admin):
+        with patch("app.api.routes.moms.get_admin_db", return_value=mock_admin):
             try:
                 response = self.client.post(
                     f"/api/v1/moms/{self.mom_id}/share",

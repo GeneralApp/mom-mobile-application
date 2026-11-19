@@ -4,8 +4,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.core.security import get_access_token, get_supabase
-from app.core.demo_accounts import DEMO_ACCOUNTS
+from app.core.security import get_access_token, get_db
 
 
 class TestDemoAccountsAndGoogleMeet(unittest.TestCase):
@@ -13,18 +12,31 @@ class TestDemoAccountsAndGoogleMeet(unittest.TestCase):
         self.client = TestClient(app)
 
     def test_demo_token_authentication(self):
-        """Demo accounts should authenticate without Supabase Auth."""
-        demo_acc = DEMO_ACCOUNTS[0]  # Hemant Sir
+        """Demo accounts should authenticate without a password check."""
+        demo_acc = {
+            "name": "Sample Demo",
+            "email": "demo@example.com",
+            "password": "unused",
+            "id": "00000000-0000-4000-8000-000000000001",
+        }
         demo_token = f"demo-token:{demo_acc['email']}"
 
-        # Mock admin supabase table queries for /me endpoint
-        mock_admin = MagicMock()
-        mock_admin.table().select().eq().execute.return_value = MagicMock(
+        # Mock database queries for the /me endpoint
+        mock_db = MagicMock()
+        mock_db.table().select().eq().execute.return_value = MagicMock(
             data=[{"id": demo_acc["id"], "name": demo_acc["name"], "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"}]
         )
+        mock_db.auth_user = None
 
-        with patch("app.core.security.create_admin_supabase_client", return_value=mock_admin), \
-             patch("app.services.supabase.create_admin_supabase_client", return_value=mock_admin):
+        with (
+            patch.dict(
+                "app.core.demo_accounts.DEMO_ACCOUNTS_BY_EMAIL",
+                {demo_acc["email"]: demo_acc},
+            ),
+            patch("app.core.security.ensure_demo_user_db_state"),
+            patch("app.core.security.get_admin_db"),
+            patch("app.core.security.get_user_db", return_value=mock_db),
+        ):
             response = self.client.get(
                 "/me",
                 headers={"Authorization": f"Bearer {demo_token}"},
@@ -39,9 +51,9 @@ class TestDemoAccountsAndGoogleMeet(unittest.TestCase):
         """Google Meet should be disabled for everyone other than thorataryan0@gmail.com."""
         app.dependency_overrides[get_access_token] = lambda: "token-other"
         mock_user = MagicMock(id=str(uuid4()), email="other.user@example.com")
-        mock_supabase = MagicMock()
-        mock_supabase.auth.get_user.return_value = MagicMock(user=mock_user)
-        app.dependency_overrides[get_supabase] = lambda: mock_supabase
+        mock_db = MagicMock()
+        mock_db.auth_user = mock_user
+        app.dependency_overrides[get_db] = lambda: mock_db
 
         try:
             # 1. Connect endpoint
@@ -79,9 +91,9 @@ class TestDemoAccountsAndGoogleMeet(unittest.TestCase):
         """Google Meet connect should proceed for thorataryan0@gmail.com."""
         app.dependency_overrides[get_access_token] = lambda: "token-aryan"
         mock_user = MagicMock(id=str(uuid4()), email="thorataryan0@gmail.com")
-        mock_supabase = MagicMock()
-        mock_supabase.auth.get_user.return_value = MagicMock(user=mock_user)
-        app.dependency_overrides[get_supabase] = lambda: mock_supabase
+        mock_db = MagicMock()
+        mock_db.auth_user = mock_user
+        app.dependency_overrides[get_db] = lambda: mock_db
 
         try:
             with patch("app.api.routes.google_meet.build_google_authorization_url", return_value="https://accounts.google.com/o/oauth2/auth"):

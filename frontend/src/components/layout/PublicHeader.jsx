@@ -21,11 +21,14 @@ export function PublicHeader() {
         >
           <img
             src={logo}
-            alt="MOM Creator"
+            alt="Samvadini"
             className="h-10 w-10 object-contain rounded-xl shadow-xs"
           />
           <div className="flex flex-col text-left">
             <span className="text-base sm:text-lg font-bold tracking-tight text-white leading-tight">
+              Samvadini
+            </span>
+            <span className="text-[10px] sm:text-[11px] font-semibold text-cyan-400 uppercase tracking-wider">
               MOM Creator
             </span>
           </div>

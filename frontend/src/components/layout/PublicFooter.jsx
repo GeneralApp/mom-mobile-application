@@ -13,11 +13,11 @@ export function PublicFooter() {
         <div className="flex items-center gap-3">
           <img
             src={logo}
-            alt="MOM Creator"
+            alt="Samvadini"
             className="h-8 w-8 object-contain rounded-lg"
           />
           <div className="text-xs">
-            <span className="font-semibold text-white">MOM Creator</span>
+            <span className="font-semibold text-white">Samvadini MOM Creator</span>
             <span className="text-slate-500 block">
               © {new Date().getFullYear()} All rights reserved.
             </span>

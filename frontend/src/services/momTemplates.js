@@ -1,5 +1,5 @@
-import { getSupabase } from '../lib/supabase.js';
 import { apiRequest } from '../lib/api.js';
+import { removeObject, uploadObject } from './storage.js';
 
 const BUCKET = 'workspace-mom-template';
 
@@ -24,12 +24,6 @@ export async function uploadMOMTemplate(
   file,
   sourceType = 'template'
 ) {
-  const supabase = getSupabase();
-
-  if (!supabase) {
-    throw new Error('Supabase is not configured');
-  }
-
   if (!file) {
     throw new Error('Please select a file');
   }
@@ -54,14 +48,15 @@ export async function uploadMOMTemplate(
 
   const filePath = `${workspaceId}/${Date.now()}-${safeName}`;
 
-  const { error: uploadError } = await supabase.storage
-    .from(BUCKET)
-    .upload(filePath, file, {
-      contentType: file.type || 'application/octet-stream',
+  try {
+    await uploadObject({
+      bucket: BUCKET,
+      path: filePath,
+      file,
       upsert: false,
+      contentType: file.type || 'application/octet-stream',
     });
-
-  if (uploadError) {
+  } catch (uploadError) {
     throw new Error(uploadError.message || 'Failed to upload file');
   }
 
@@ -81,9 +76,7 @@ export async function uploadMOMTemplate(
       }
     );
   } catch (error) {
-    await supabase.storage
-      .from(BUCKET)
-      .remove([filePath]);
+    await removeObject(BUCKET, filePath).catch(() => {});
 
     throw error;
   }
@@ -96,21 +89,10 @@ export async function replaceMOMTemplate(
 ) {
   const existing = await getMOMTemplate(workspaceId);
 
-  if (existing?.file_path) {
-    const supabase = getSupabase();
-
-    const { error } = await supabase.storage
-      .from(BUCKET)
-      .remove([existing.file_path]);
-
-    if (error) {
-      throw new Error(
-        error.message || 'Failed to remove previous file'
-      );
-    }
+  // Deleting the template record also deletes its stored file on the backend.
+  if (existing?.id) {
+    await deleteMOMTemplate(workspaceId);
   }
-
-  await deleteMOMTemplate(workspaceId);
 
   return await uploadMOMTemplate(
     workspaceId,
@@ -139,21 +121,4 @@ export async function deleteMOMTemplate(workspaceId) {
       method: 'DELETE',
     }
   );
-}
-
-async function supabaseRemove(filePath) {
-  const supabase = getSupabase();
-
-  if (!supabase || !filePath) return;
-
-  const { error } = await supabase.storage
-    .from(BUCKET)
-    .remove([filePath]);
-
-  if (error) {
-    console.warn(
-      'Failed to remove previous MOM template file:',
-      error
-    );
-  }
 }

@@ -3,11 +3,11 @@ import logging
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
-from supabase import Client
+from app.db import Client
 
 from app.core.security import (
     get_access_token,
-    get_supabase,
+    get_db,
     get_authenticated_user,
 )
 from app.schemas.mom import (
@@ -16,7 +16,7 @@ from app.schemas.mom import (
     MOMShareResponse,
     MOMUpdate,
 )
-from app.services.supabase import create_admin_supabase_client
+from app.db import get_admin_db
 
 logger = logging.getLogger(__name__)
 
@@ -36,14 +36,14 @@ router = APIRouter(
 )
 async def get_mom_by_meeting(
     meeting_id: str,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
 ):
     """
     Get the MOM associated with a meeting.
     """
 
     response = (
-        supabase
+        db
         .table("moms")
         .select(
             """
@@ -86,16 +86,16 @@ async def get_mom_by_meeting(
 )
 async def get_mom(
     mom_id: str,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
 ):
     """
     Get a single MOM by ID.
 
-    RLS is enforced through the user-scoped Supabase client.
+    Access rules are enforced through the user-scoped database client.
     """
 
     response = (
-        supabase
+        db
         .table("moms")
         .select(
             """
@@ -140,7 +140,7 @@ async def get_mom(
 async def update_mom(
     mom_id: str,
     payload: MOMUpdate,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
 ):
     """
     Update an existing MOM.
@@ -154,7 +154,7 @@ async def update_mom(
     # --------------------------------------------------------
 
     existing_response = (
-        supabase
+        db
         .table("moms")
         .select(
             """
@@ -382,7 +382,7 @@ async def update_mom(
     # --------------------------------------------------------
 
     updated_response = (
-        supabase
+        db
         .table("moms")
         .update(update_data)
         .eq("id", mom_id)
@@ -408,7 +408,7 @@ async def update_mom(
 )
 async def review_mom(
     mom_id: str,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
 ):
     """
     Mark a MOM as reviewed.
@@ -424,7 +424,7 @@ async def review_mom(
     # --------------------------------------------------------
 
     existing_response = (
-        supabase
+        db
         .table("moms")
         .select(
             """
@@ -472,7 +472,7 @@ async def review_mom(
     # --------------------------------------------------------
 
     response = (
-        supabase
+        db
         .table("moms")
         .update(
             {
@@ -502,7 +502,7 @@ async def review_mom(
 )
 async def finalize_mom(
     mom_id: str,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
 ):
     """
     Finalize a reviewed MOM.
@@ -517,7 +517,7 @@ async def finalize_mom(
     # --------------------------------------------------------
 
     existing_response = (
-        supabase
+        db
         .table("moms")
         .select(
             """
@@ -583,7 +583,7 @@ async def finalize_mom(
     # --------------------------------------------------------
 
     response = (
-        supabase
+        db
         .table("moms")
         .update(
             {
@@ -614,7 +614,7 @@ async def finalize_mom(
 async def share_mom_to_workspace(
     mom_id: str,
     payload: MOMShareRequest,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
     access_token: str = Depends(get_access_token),
 ):
     """
@@ -623,7 +623,7 @@ async def share_mom_to_workspace(
     This clones the meeting, MOM, action items, and participants into the target workspace.
     """
     # 1. Authenticate user
-    user = get_authenticated_user(supabase, access_token)
+    user = get_authenticated_user(db, access_token)
 
     # 2. Validate target_workspace_id format
     raw_target_id = payload.target_workspace_id.strip()
@@ -642,9 +642,9 @@ async def share_mom_to_workspace(
         )
 
     # 3. Retrieve source MOM using admin client
-    admin_supabase = create_admin_supabase_client()
+    admin_db = get_admin_db()
     source_mom_res = (
-        admin_supabase
+        admin_db
         .table("moms")
         .select("*")
         .eq("id", mom_id)
@@ -660,7 +660,7 @@ async def share_mom_to_workspace(
     # 4. Retrieve source meeting
     meeting_id = source_mom.get("meeting_id")
     source_meeting_res = (
-        admin_supabase
+        admin_db
         .table("meetings")
         .select("*")
         .eq("id", meeting_id)
@@ -683,7 +683,7 @@ async def share_mom_to_workspace(
 
     # 6. Verify caller is workspace owner of source workspace
     source_ws_res = (
-        admin_supabase
+        admin_db
         .table("workspaces")
         .select("id, name, created_by")
         .eq("id", source_workspace_id)
@@ -701,7 +701,7 @@ async def share_mom_to_workspace(
         is_owner = True
     else:
         membership_res = (
-            admin_supabase
+            admin_db
             .table("workspace_members")
             .select("role")
             .eq("workspace_id", source_workspace_id)
@@ -719,7 +719,7 @@ async def share_mom_to_workspace(
 
     # 7. Verify target workspace exists
     target_ws_res = (
-        admin_supabase
+        admin_db
         .table("workspaces")
         .select("id, name, created_by")
         .eq("id", target_workspace_id)
@@ -739,7 +739,7 @@ async def share_mom_to_workspace(
     meeting_desc = source_meeting.get("description") or ""
 
     try:
-        admin_supabase.table("meetings").insert({
+        admin_db.table("meetings").insert({
             "id": new_meeting_id,
             "workspace_id": target_workspace_id,
             "created_by": target_owner_id,
@@ -762,7 +762,7 @@ async def share_mom_to_workspace(
     new_mom_id = str(uuid4())
     now_iso = datetime.now(timezone.utc).isoformat()
     try:
-        admin_supabase.table("moms").insert({
+        admin_db.table("moms").insert({
             "id": new_mom_id,
             "meeting_id": new_meeting_id,
             "created_by": target_owner_id,
@@ -779,7 +779,7 @@ async def share_mom_to_workspace(
     except Exception as exc:
         logger.error(f"Failed to create MOM in target workspace: {exc}")
         try:
-            admin_supabase.table("meetings").delete().eq("id", new_meeting_id).execute()
+            admin_db.table("meetings").delete().eq("id", new_meeting_id).execute()
         except Exception:
             pass
         raise HTTPException(
@@ -790,7 +790,7 @@ async def share_mom_to_workspace(
     # 10. Copy Action Items
     try:
         action_items_res = (
-            admin_supabase
+            admin_db
             .table("action_items")
             .select("*")
             .eq("mom_id", mom_id)
@@ -798,7 +798,7 @@ async def share_mom_to_workspace(
         )
         if action_items_res.data:
             target_members_res = (
-                admin_supabase
+                admin_db
                 .table("workspace_members")
                 .select("user_id")
                 .eq("workspace_id", target_workspace_id)
@@ -811,7 +811,7 @@ async def share_mom_to_workspace(
                 valid_assigned_to = (
                     assigned_to_id if assigned_to_id in target_member_ids else None
                 )
-                admin_supabase.table("action_items").insert({
+                admin_db.table("action_items").insert({
                     "id": str(uuid4()),
                     "mom_id": new_mom_id,
                     "meeting_id": new_meeting_id,
@@ -829,7 +829,7 @@ async def share_mom_to_workspace(
     # 11. Copy Meeting Participants
     try:
         participants_res = (
-            admin_supabase
+            admin_db
             .table("meeting_participants")
             .select("*")
             .eq("meeting_id", meeting_id)
@@ -837,7 +837,7 @@ async def share_mom_to_workspace(
         )
         if participants_res.data:
             for part in participants_res.data:
-                admin_supabase.table("meeting_participants").insert({
+                admin_db.table("meeting_participants").insert({
                     "meeting_id": new_meeting_id,
                     "name": part.get("name", "Participant"),
                     "email": part.get("email"),

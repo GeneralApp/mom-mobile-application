@@ -1,12 +1,14 @@
+"""
+Manual smoke test: sign in against the running API and print the session.
+
+    set TEST_USER_EMAIL / TEST_USER_PASSWORD (and optionally API_BASE_URL)
+    python test_auth.py
+"""
 import os
-from supabase import create_client
-from app.core.config import settings
 
-supabase = create_client(
-    settings.supabase_url,
-    settings.supabase_anon_key,
-)
+import httpx
 
+base_url = os.environ.get("API_BASE_URL", "http://localhost:8000").rstrip("/")
 email = os.environ.get("TEST_USER_EMAIL", "test@example.com")
 password = os.environ.get("TEST_USER_PASSWORD", "")
 
@@ -14,21 +16,22 @@ if not password:
     print("Set TEST_USER_EMAIL and TEST_USER_PASSWORD to run test_auth.py")
     exit(0)
 
-response = supabase.auth.sign_in_with_password(
-    {
-        "email": email,
-        "password": password,
-    }
+response = httpx.post(
+    f"{base_url}/api/v1/auth/login",
+    json={"email": email, "password": password},
+    timeout=30,
 )
 
-if not response.session or not response.user:
-    raise RuntimeError("Login failed")
+if response.status_code != 200:
+    raise RuntimeError(f"Login failed: {response.status_code} {response.text}")
+
+session = response.json()
 
 print("USER UUID:")
-print(response.user.id)
+print(session["user"]["id"])
 
 print("\nEMAIL:")
-print(response.user.email)
+print(session["user"]["email"])
 
 print("\nACCESS TOKEN:")
-print(response.session.access_token)
+print(session["access_token"])

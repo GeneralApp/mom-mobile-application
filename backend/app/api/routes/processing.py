@@ -4,11 +4,11 @@ from fastapi import (
     Depends,
     HTTPException,
 )
-from supabase import Client
+from app.db import Client
 
 from app.core.security import (
     get_access_token,
-    get_supabase,
+    get_db,
     get_authenticated_user,
 )
 from app.schemas.processing import (
@@ -19,8 +19,8 @@ from app.schemas.processing import (
 from app.services.processing import (
     process_job,
 )
-from app.services.supabase import (
-    create_admin_supabase_client,
+from app.db import (
+    get_admin_db,
 )
 
 
@@ -59,18 +59,18 @@ JOB_SELECT_FIELDS = """
 # ============================================================
 
 def get_meeting_for_processing(
-    supabase: Client,
+    db: Client,
     meeting_id: str,
 ) -> dict:
     """
-    Load a meeting using the authenticated Supabase client.
+    Load a meeting using the user-scoped database client.
 
     RLS ensures the authenticated user can only see meetings
     they are authorized to access.
     """
 
     response = (
-        supabase
+        db
         .table("meetings")
         .select(
             "id,workspace_id"
@@ -96,7 +96,7 @@ def get_meeting_for_processing(
 # ============================================================
 
 def validate_source_attachment(
-    supabase: Client,
+    db: Client,
     attachment_id: str,
     meeting_id: str,
 ) -> None:
@@ -110,7 +110,7 @@ def validate_source_attachment(
     """
 
     response = (
-        supabase
+        db
         .table("attachments")
         .select(
             "id,meeting_id"
@@ -210,7 +210,7 @@ def validate_input_file_path(
 )
 async def create_processing_job(
     payload: ProcessingJobCreate,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
     access_token: str = Depends(get_access_token),
 ):
     """
@@ -234,7 +234,7 @@ async def create_processing_job(
     # --------------------------------------------------------
 
     user = get_authenticated_user(
-        supabase,
+        db,
         access_token,
     )
 
@@ -243,7 +243,7 @@ async def create_processing_job(
     # --------------------------------------------------------
 
     meeting = get_meeting_for_processing(
-        supabase,
+        db,
         payload.meeting_id,
     )
 
@@ -263,7 +263,7 @@ async def create_processing_job(
 
     if payload.source_attachment_id:
         validate_source_attachment(
-            supabase,
+            db,
             payload.source_attachment_id,
             payload.meeting_id,
         )
@@ -316,7 +316,7 @@ async def create_processing_job(
     try:
 
         response = (
-            supabase
+            db
             .table("processing_jobs")
             .insert({
                 "meeting_id": payload.meeting_id,
@@ -368,7 +368,7 @@ async def create_processing_job(
 )
 async def get_processing_job(
     job_id: str,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
 ):
     """
     Return a processing job visible to the authenticated user.
@@ -377,7 +377,7 @@ async def get_processing_job(
     """
 
     response = (
-        supabase
+        db
         .table("processing_jobs")
         .select(
             JOB_SELECT_FIELDS
@@ -408,14 +408,14 @@ async def get_processing_job(
 async def run_processing_job(
     job_id: str,
     background_tasks: BackgroundTasks,
-    supabase: Client = Depends(get_supabase),
+    db: Client = Depends(get_db),
     access_token: str = Depends(get_access_token),
 ):
     """
     Start a queued processing job.
 
     The request itself is authenticated and ownership checked
-    using the user's Supabase session.
+    using the user-scoped database client.
 
     Actual processing runs in the trusted backend using the
     service-role client.
@@ -426,7 +426,7 @@ async def run_processing_job(
     # --------------------------------------------------------
 
     user = get_authenticated_user(
-        supabase,
+        db,
         access_token,
     )
 
@@ -435,7 +435,7 @@ async def run_processing_job(
     # --------------------------------------------------------
 
     response = (
-        supabase
+        db
         .table("processing_jobs")
         .select(
             """
@@ -490,8 +490,8 @@ async def run_processing_job(
     # Create trusted backend client
     # --------------------------------------------------------
 
-    admin_supabase = (
-        create_admin_supabase_client()
+    admin_db = (
+        get_admin_db()
     )
 
     # --------------------------------------------------------
@@ -500,7 +500,7 @@ async def run_processing_job(
 
     background_tasks.add_task(
         process_job,
-        admin_supabase,
+        admin_db,
         job_id,
     )
 

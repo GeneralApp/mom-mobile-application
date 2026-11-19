@@ -6,12 +6,28 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
 
     # ============================================================
-    # SUPABASE
+    # MONGODB
     # ============================================================
 
-    supabase_url: str
-    supabase_anon_key: str
-    supabase_service_role_key: str
+    mongodb_uri: str
+    mongodb_db_name: str = "mom-mobile-application"
+
+
+    # ============================================================
+    # AUTH (backend-issued JWTs)
+    # ============================================================
+
+    jwt_secret: str
+    jwt_expires_minutes: int = 60 * 24 * 7
+    password_reset_expires_minutes: int = 60
+
+
+    # ============================================================
+    # EMAIL (Resend) - invitations and password resets
+    # ============================================================
+
+    resend_api_key: str = ""
+    email_from: str = "Samvadini <onboarding@resend.dev>"
 
 
     # ============================================================

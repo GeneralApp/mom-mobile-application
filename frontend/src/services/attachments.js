@@ -1,5 +1,5 @@
 import { apiRequest } from '../lib/api.js';
-import { getSupabase } from '../lib/supabase.js';
+import { uploadObject } from './storage.js';
 
 export async function uploadToStorage({
   file,
@@ -8,35 +8,29 @@ export async function uploadToStorage({
   meetingId,
   customFileName,
 }) {
-  const supabase = getSupabase();
-  if (!supabase) {
-    throw new Error('Supabase client is not configured for storage upload.');
-  }
-
   const originalName = file?.name || 'recording.webm';
   const fileName =
     customFileName ||
     `${Date.now()}_${originalName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
   const filePath = `${workspaceId}/${meetingId}/${fileName}`;
 
-
-  const { data, error } = await supabase.storage
-    .from(bucket)
-    .upload(filePath, file, {
-      cacheControl: '3600',
+  try {
+    const stored = await uploadObject({
+      bucket,
+      path: filePath,
+      file,
       upsert: true,
     });
 
-  if (error) {
+    return {
+      path: stored?.path || filePath,
+      fileName,
+      fileType: file.type || 'application/octet-stream',
+      fileSize: file.size,
+    };
+  } catch (error) {
     throw new Error(`Failed to upload to storage: ${error.message}`);
   }
-
-  return {
-    path: data.path || filePath,
-    fileName,
-    fileType: file.type || 'application/octet-stream',
-    fileSize: file.size,
-  };
 }
 
 export async function confirmAttachmentUpload({

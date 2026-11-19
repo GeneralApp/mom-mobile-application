@@ -1,13 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import Response
-from supabase import Client
+from app.db import Client
 
 from app.core.security import (
     get_access_token,
-    get_supabase,
+    get_authenticated_user,
+    get_db,
 )
-from app.services.supabase import (
-    create_admin_supabase_client,
+from app.db import (
+    get_admin_db,
 )
 from app.services.document_export import (
     build_export_payload,
@@ -33,26 +34,10 @@ router = APIRouter(
 # ============================================================
 
 def _get_current_user(
-    supabase: Client,
+    db: Client,
     access_token: str,
 ):
-    try:
-        response = supabase.auth.get_user(
-            access_token
-        )
-    except Exception as exc:
-        raise HTTPException(
-            status_code=401,
-            detail=f"Invalid authentication token: {exc}",
-        )
-
-    if response.user is None:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid authentication token",
-        )
-
-    return response.user
+    return get_authenticated_user(db, access_token)
 
 
 # ============================================================
@@ -60,7 +45,7 @@ def _get_current_user(
 # ============================================================
 
 def _load_export_data(
-    supabase: Client,
+    db: Client,
     meeting_id: str,
 ):
 
@@ -69,7 +54,7 @@ def _load_export_data(
     # --------------------------------------------------------
 
     meeting_response = (
-        supabase.table("meetings")
+        db.table("meetings")
         .select(
             "id,"
             "workspace_id,"
@@ -102,7 +87,7 @@ def _load_export_data(
     # Resolve the creator UUID to the human-readable profile name.
     # The meetings.created_by column stores a user UUID, which must
     # never be printed directly in the exported document.
-    admin = create_admin_supabase_client()
+    admin = get_admin_db()
 
     creator_name = "—"
     created_by = meeting.get("created_by")
@@ -129,7 +114,7 @@ def _load_export_data(
     # --------------------------------------------------------
 
     mom_response = (
-        supabase.table("moms")
+        db.table("moms")
         .select(
             "id,"
             "meeting_id,"
@@ -167,7 +152,7 @@ def _load_export_data(
     # --------------------------------------------------------
 
     action_response = (
-        supabase.table("action_items")
+        db.table("action_items")
         .select(
             "id,"
             "mom_id,"
@@ -260,8 +245,8 @@ async def export_pdf(
     meeting_id: str,
     tz: str | None = None,
     client_time: str | None = None,
-    supabase: Client = Depends(
-        get_supabase
+    db: Client = Depends(
+        get_db
     ),
     access_token: str = Depends(
         get_access_token
@@ -269,12 +254,12 @@ async def export_pdf(
 ):
 
     _get_current_user(
-        supabase,
+        db,
         access_token,
     )
 
     payload = _load_export_data(
-        supabase,
+        db,
         meeting_id,
     )
     payload["target_timezone"] = tz
@@ -439,8 +424,8 @@ def _participant_list(
 )
 async def list_meeting_participants(
     meeting_id: str,
-    supabase: Client = Depends(
-        get_supabase
+    db: Client = Depends(
+        get_db
     ),
     access_token: str = Depends(
         get_access_token
@@ -448,11 +433,11 @@ async def list_meeting_participants(
 ):
 
     user = _get_current_user(
-        supabase,
+        db,
         access_token,
     )
 
-    admin = create_admin_supabase_client()
+    admin = get_admin_db()
 
     meeting = _participant_meeting(
         admin,
@@ -502,8 +487,8 @@ async def list_meeting_participants(
 async def create_meeting_participant(
     meeting_id: str,
     payload: MeetingParticipantCreate,
-    supabase: Client = Depends(
-        get_supabase
+    db: Client = Depends(
+        get_db
     ),
     access_token: str = Depends(
         get_access_token
@@ -511,11 +496,11 @@ async def create_meeting_participant(
 ):
 
     user = _get_current_user(
-        supabase,
+        db,
         access_token,
     )
 
-    admin = create_admin_supabase_client()
+    admin = get_admin_db()
 
     meeting = _participant_meeting(
         admin,
@@ -612,8 +597,8 @@ async def update_meeting_participant(
     meeting_id: str,
     participant_id: str,
     payload: MeetingParticipantUpdate,
-    supabase: Client = Depends(
-        get_supabase
+    db: Client = Depends(
+        get_db
     ),
     access_token: str = Depends(
         get_access_token
@@ -621,11 +606,11 @@ async def update_meeting_participant(
 ):
 
     user = _get_current_user(
-        supabase,
+        db,
         access_token,
     )
 
-    admin = create_admin_supabase_client()
+    admin = get_admin_db()
 
     meeting = _participant_meeting(
         admin,
@@ -741,8 +726,8 @@ async def update_meeting_participant(
 async def delete_meeting_participant(
     meeting_id: str,
     participant_id: str,
-    supabase: Client = Depends(
-        get_supabase
+    db: Client = Depends(
+        get_db
     ),
     access_token: str = Depends(
         get_access_token
@@ -750,11 +735,11 @@ async def delete_meeting_participant(
 ):
 
     user = _get_current_user(
-        supabase,
+        db,
         access_token,
     )
 
-    admin = create_admin_supabase_client()
+    admin = get_admin_db()
 
     meeting = _participant_meeting(
         admin,
